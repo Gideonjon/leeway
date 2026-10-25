@@ -43,7 +43,7 @@ export async function POST(req: Request) {
   try {
     amount = toBaseUnits(body.amount ?? "", origin.decimals);
   } catch (e) {
-    return fail(errorMessage(e));
+    return fail((e as Error).message);
   }
   const amountUsd = Number(body.amount) * origin.price;
   const cashback = body.cashbackAddress?.trim() || null;

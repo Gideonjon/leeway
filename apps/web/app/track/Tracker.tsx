@@ -1,160 +1,108 @@
 "use client";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { phaseOf } from "@/components/ActivityDrawer";
+import { fmtUsd } from "@/components/useTokens";
 
-type GhostState = "awaiting_deposit" | "shielding" | "holding" | "sending_leg2" | "leg2_pending" | "completed" | "refunded" | "failed";
-
-interface GhostStatus {
-  type: "ghost";
-  code: string;
-  state: GhostState;
-  depositAddress: string | null;
+interface Data {
+  type: "ghost" | "swap";
+  code?: string;
+  state?: string;
+  status?: string;
   amountInUsd: string | null;
-  releaseAt: string | null;
-  completedAt: string | null;
-  purged: boolean;
-  error: string | null;
-}
-interface SwapStatus {
-  type: "swap";
-  status: string;
-  amountInUsd: string | null;
-  createdAt: string;
+  releaseAt?: string | null;
+  purged?: boolean;
+  error?: string | null;
 }
 
-const STAGES: { key: string; title: string; detail: string; shielded?: boolean }[] = [
-  { key: "awaiting_deposit", title: "Waiting for your deposit", detail: "Starts as soon as your funds arrive." },
-  { key: "leg1", title: "Leg one", detail: "Your funds become ZEC." },
-  { key: "holding", title: "Holding in the shielded pool", detail: "A random wait breaks the timing link.", shielded: true },
-  { key: "leg2", title: "Leg two", detail: "ZEC becomes the asset they asked for." },
-  { key: "completed", title: "Delivered", detail: "It's in their wallet." },
+const GHOST_STEPS = [
+  { title: "Deposit", detail: "Starts when your funds arrive." },
+  { title: "Leg one", detail: "Your funds become ZEC." },
+  { title: "Held in the shielded pool", detail: "A random wait breaks the timing link.", shielded: true },
+  { title: "Leg two", detail: "ZEC becomes the asset they asked for." },
+  { title: "Delivered", detail: "In their wallet." },
 ];
-
-function stageIndex(state: GhostState): number {
-  switch (state) {
-    case "awaiting_deposit":
-      return 0;
-    case "shielding":
-      return 1;
-    case "holding":
-      return 2;
-    case "sending_leg2":
-    case "leg2_pending":
-      return 3;
-    case "completed":
-      return 5;
-    default:
-      return -1;
-  }
-}
-
-function minutesUntil(iso: string | null) {
-  if (!iso) return null;
-  const m = Math.ceil((new Date(iso).getTime() - Date.now()) / 60_000);
-  return m > 0 ? m : null;
-}
+const GHOST_INDEX: Record<string, number> = { awaiting_deposit: 0, shielding: 1, holding: 2, sending_leg2: 3, leg2_pending: 3, completed: 5 };
 
 export function Tracker() {
   const params = useSearchParams();
   const router = useRouter();
-  const [input, setInput] = useState(params.get("code") ?? "");
-  const [result, setResult] = useState<GhostStatus | SwapStatus | null>(null);
+  const code = params.get("code") ?? "";
+  const [input, setInput] = useState(code);
+  const [data, setData] = useState<Data | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const load = useCallback(async (code: string) => {
-    if (!code) return;
-    const res = await fetch(`/api/track/${encodeURIComponent(code)}`);
-    const data = await res.json();
-    if (!res.ok) {
-      setResult(null);
-      setError(data.error);
+  const load = useCallback(async (c: string) => {
+    const r = await fetch(`/api/track/${encodeURIComponent(c)}`);
+    const d = await r.json();
+    if (!r.ok) {
+      setData(null);
+      setError(d.error);
     } else {
       setError(null);
-      setResult(data);
+      setData(d);
     }
   }, []);
 
-  const code = params.get("code") ?? "";
   useEffect(() => {
     if (!code) return;
     void load(code);
-    const t = setInterval(() => void load(code), 15_000);
+    const t = setInterval(() => void load(code), 10_000);
     return () => clearInterval(t);
   }, [code, load]);
+
+  const { phase, label } = phaseOf(data);
+  const idx = data?.type === "ghost" ? (GHOST_INDEX[data.state ?? ""] ?? -1) : -1;
+  const holdLeft = data?.releaseAt ? Math.ceil((new Date(data.releaseAt).getTime() - Date.now()) / 60_000) : null;
 
   return (
     <>
       <form
-        className="card"
-        style={{ display: "grid", gap: 12 }}
+        className="opts"
         onSubmit={(e) => {
           e.preventDefault();
           router.replace(`/track?code=${encodeURIComponent(input.trim())}`);
         }}
       >
-        <label className="field__label" htmlFor="code">
-          Tracking code or deposit address
+        <label className="opt">
+          <span className="opt__label">Code</span>
+          <input className="opt__input" value={input} onChange={(e) => setInput(e.target.value)} placeholder="lw-xxxx-xxxx" spellCheck={false} autoComplete="off" />
         </label>
-        <div className="deposit__addr">
-          <input id="code" className="input input--mono" value={input} onChange={(e) => setInput(e.target.value)} spellCheck={false} autoComplete="off" />
-          <button className="btn btn--secondary" type="submit">
-            Track
-          </button>
-        </div>
+        <button className="cta" type="submit" disabled={!input.trim()}>
+          Track
+        </button>
       </form>
 
       {error && (
-        <p className="notice notice--error" role="alert" style={{ marginTop: 16 }}>
+        <p className="note note--error" role="alert">
           {error}
         </p>
       )}
 
-      {result?.type === "ghost" && <GhostView g={result} />}
-      {result?.type === "swap" && (
-        <div className="card" style={{ marginTop: 16 }}>
-          <span className={`pill ${result.status === "SUCCESS" ? "pill--settled" : ["REFUNDED", "FAILED"].includes(result.status) ? "pill--failed" : "pill--moving"}`}>
-            {result.status === "SUCCESS" ? "Delivered" : result.status === "REFUNDED" ? "Refunded" : result.status === "FAILED" ? "Failed" : result.status === "PENDING_DEPOSIT" ? "Awaiting deposit" : "Swapping"}
-          </span>
-          {result.amountInUsd && <p style={{ margin: "12px 0 0", color: "var(--ink-muted)" }}>${Number(result.amountInUsd).toFixed(2)} swap</p>}
+      {data && (
+        <div className="track" aria-live="polite">
+          <div className="deposit__top">
+            <span className={`pill pill--${phase}`}>{label}</span>
+            {data.amountInUsd && <span className="deposit__timer">{fmtUsd(Number(data.amountInUsd))}</span>}
+          </div>
+          {data.type === "ghost" && phase !== "failed" ? (
+            <ol className="psteps">
+              {GHOST_STEPS.map((s, i) => (
+                <li key={s.title} className={`pstep pstep--${i < idx ? "done" : i === idx ? "now" : "todo"} ${s.shielded ? "pstep--shielded" : ""}`}>
+                  <span className="pstep__icon pstep__icon--dot" />
+                  <div className="pstep__body">
+                    <div className="pstep__title">{s.title}</div>
+                    <div className="pstep__detail">{i === 2 && i === idx && holdLeft && holdLeft > 0 ? `Leg two leaves in about ${holdLeft} min.` : s.detail}</div>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          ) : phase === "failed" ? (
+            <p className="note note--error">{data.state === "refunded" || data.status === "REFUNDED" ? "Refunded to your address. Nothing was lost." : (data.error ?? "This transfer stopped. Contact support with your code.")}</p>
+          ) : null}
+          {data.purged && <p className="hint">The link between sender and recipient has been erased.</p>}
         </div>
       )}
     </>
-  );
-}
-
-function GhostView({ g }: { g: GhostStatus }) {
-  const idx = stageIndex(g.state);
-  const ended = g.state === "refunded" || g.state === "failed";
-  const wait = minutesUntil(g.releaseAt);
-  return (
-    <div className="card" style={{ marginTop: 16 }} aria-live="polite">
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-        <code style={{ fontFamily: "var(--font-mono)" }}>{g.code}</code>
-        {g.amountInUsd && <span style={{ color: "var(--ink-muted)" }}>${Number(g.amountInUsd).toFixed(2)}</span>}
-      </div>
-
-      {ended ? (
-        <p className="notice notice--error" style={{ marginTop: 16 }}>
-          {g.state === "refunded" ? "Leg one was refunded to your address. Nothing was lost." : g.error ?? "This send stopped. Contact support with your code."}
-        </p>
-      ) : (
-        <ol className="timeline">
-          {STAGES.map((s, i) => (
-            <li key={s.key} data-done={i < idx} data-now={i === idx} data-shielded={s.shielded ?? false}>
-              <div>
-                <strong>{s.title}</strong>
-                <span>{i === 2 && i === idx && wait ? `Leg two leaves in about ${wait} min.` : s.detail}</span>
-              </div>
-            </li>
-          ))}
-        </ol>
-      )}
-      {g.depositAddress && (
-        <p className="field__hint">
-          Deposit address: <code style={{ fontFamily: "var(--font-mono)", overflowWrap: "anywhere" }}>{g.depositAddress}</code>
-        </p>
-      )}
-      {g.purged && <p className="field__hint">The link between sender and recipient has been erased.</p>}
-    </div>
   );
 }

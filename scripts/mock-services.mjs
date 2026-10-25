@@ -4,9 +4,27 @@ import http from "node:http";
 import { randomBytes } from "node:crypto";
 
 const TOKENS = [
-  { assetId: "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near", decimals: 6, blockchain: "base", symbol: "USDC", price: 1 },
-  { assetId: "nep141:sol.omft.near", decimals: 9, blockchain: "sol", symbol: "SOL", price: 150 },
-  { assetId: "nep141:zec.omft.near", decimals: 8, blockchain: "zec", symbol: "ZEC", price: 500 },
+  { assetId: "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near", decimals: 6, blockchain: "base", symbol: "USDC", price: 1, contractAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
+  { assetId: "nep141:eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near", decimals: 6, blockchain: "eth", symbol: "USDC", price: 1, contractAddress: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48" },
+  { assetId: "nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near", decimals: 6, blockchain: "sol", symbol: "USDC", price: 1 },
+  { assetId: "nep141:arb-0xaf88d065e77c8cc2239327c5edb3a432268e5831.omft.near", decimals: 6, blockchain: "arb", symbol: "USDC", price: 1, contractAddress: "0xaf88d065e77c8cc2239327c5edb3a432268e5831" },
+  { assetId: "nep141:eth-0xdac17f958d2ee523a2206206994597c13d831ec7.omft.near", decimals: 6, blockchain: "eth", symbol: "USDT", price: 1, contractAddress: "0xdac17f958d2ee523a2206206994597c13d831ec7" },
+  { assetId: "nep141:tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near", decimals: 6, blockchain: "tron", symbol: "USDT", price: 1 },
+  { assetId: "nep141:eth.omft.near", decimals: 18, blockchain: "eth", symbol: "ETH", price: 3120.4 },
+  { assetId: "nep141:base.omft.near", decimals: 18, blockchain: "base", symbol: "ETH", price: 3120.4 },
+  { assetId: "nep141:arb.omft.near", decimals: 18, blockchain: "arb", symbol: "ETH", price: 3120.4 },
+  { assetId: "nep141:btc.omft.near", decimals: 8, blockchain: "btc", symbol: "BTC", price: 79849.56 },
+  { assetId: "nep141:sol.omft.near", decimals: 9, blockchain: "sol", symbol: "SOL", price: 150.12 },
+  { assetId: "nep141:zec.omft.near", decimals: 8, blockchain: "zec", symbol: "ZEC", price: 512.3 },
+  { assetId: "nep141:wrap.near", decimals: 24, blockchain: "near", symbol: "NEAR", price: 3.42 },
+  { assetId: "nep141:bsc.omft.near", decimals: 18, blockchain: "bsc", symbol: "BNB", price: 612.8 },
+  { assetId: "nep141:doge.omft.near", decimals: 8, blockchain: "doge", symbol: "DOGE", price: 0.1102 },
+  { assetId: "nep141:xrp.omft.near", decimals: 6, blockchain: "xrp", symbol: "XRP", price: 1.47 },
+  { assetId: "nep141:ton.omft.near", decimals: 9, blockchain: "ton", symbol: "TON", price: 2.38 },
+  { assetId: "nep141:sui.omft.near", decimals: 9, blockchain: "sui", symbol: "SUI", price: 2.91 },
+  { assetId: "nep141:pol.omft.near", decimals: 18, blockchain: "pol", symbol: "POL", price: 0.21 },
+  { assetId: "nep141:avax.omft.near", decimals: 18, blockchain: "avax", symbol: "AVAX", price: 18.4 },
+  { assetId: "nep141:ltc.omft.near", decimals: 8, blockchain: "ltc", symbol: "LTC", price: 71.2 },
 ];
 
 const swaps = new Map(); // depositAddress -> { status, req, amountInUsd }

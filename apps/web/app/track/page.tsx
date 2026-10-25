@@ -1,23 +1,22 @@
 import { Suspense } from "react";
-import { Footer, Header } from "@/components/Header";
 import { Tracker } from "./Tracker";
 
 export const metadata = { title: "Track a transfer — Leeway" };
 
 export default function TrackPage() {
   return (
-    <>
-      <Header current="track" />
-      <main className="wrap page">
-        <div className="narrow">
-          <h1 className="page__title">Where is it now?</h1>
-          <p className="page__lede">Paste your tracking code (lw-…) or the deposit address of a swap.</p>
+    <main className="stage">
+      <section className="widget">
+        <header className="widget__head">
+          <h1>Track a transfer</h1>
+          <p>Paste your tracking code (lw-…) or a swap&apos;s deposit address.</p>
+        </header>
+        <div className="widget__body">
           <Suspense>
             <Tracker />
           </Suspense>
         </div>
-      </main>
-      <Footer />
-    </>
+      </section>
+    </main>
   );
 }

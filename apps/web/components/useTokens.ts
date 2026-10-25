@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { chainName } from "@/lib/chains";
 
 export interface TokenOption {
   assetId: string;
@@ -7,6 +8,7 @@ export interface TokenOption {
   blockchain: string;
   decimals: number;
   price: number;
+  contractAddress?: string;
 }
 
 export interface PublicConfig {
@@ -19,16 +21,10 @@ export interface PublicConfig {
   dcaContract: string | null;
 }
 
-const CHAIN_NAMES: Record<string, string> = {
-  eth: "Ethereum", base: "Base", arb: "Arbitrum", sol: "Solana", btc: "Bitcoin", zec: "Zcash", near: "NEAR",
-  bsc: "BNB Chain", pol: "Polygon", tron: "Tron", op: "Optimism", avax: "Avalanche", ton: "TON", sui: "Sui",
-  doge: "Dogecoin", xrp: "XRP", ltc: "Litecoin", gnosis: "Gnosis", bera: "Berachain", stellar: "Stellar",
-};
-export const chainName = (c: string) => CHAIN_NAMES[c] ?? c.toUpperCase();
+export { chainName };
 export const tokenLabel = (t: TokenOption) => `${t.symbol} · ${chainName(t.blockchain)}`;
 
-/** Popular pairs float to the top of the pickers. */
-const RANK = ["USDC", "USDT", "ETH", "BTC", "SOL", "ZEC"];
+const RANK = ["USDC", "USDT", "ETH", "BTC", "SOL", "ZEC", "NEAR"];
 export function sortTokens(list: TokenOption[]) {
   return [...list].sort((a, b) => {
     const ra = RANK.indexOf(a.symbol), rb = RANK.indexOf(b.symbol);
@@ -37,20 +33,34 @@ export function sortTokens(list: TokenOption[]) {
   });
 }
 
+let cache: { tokens: TokenOption[]; config: PublicConfig } | null = null;
+let inflight: Promise<{ tokens: TokenOption[]; config: PublicConfig }> | null = null;
+
+function loadAll() {
+  if (cache) return Promise.resolve(cache);
+  inflight ??= Promise.all([fetch("/api/tokens").then((r) => r.json()), fetch("/api/config").then((r) => r.json())]).then(([t, c]) => {
+    if (t.error) throw new Error(t.error);
+    cache = { tokens: sortTokens(t), config: c };
+    return cache;
+  });
+  return inflight;
+}
+
 export function useTokens() {
-  const [tokens, setTokens] = useState<TokenOption[]>([]);
-  const [config, setConfig] = useState<PublicConfig | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [state, setState] = useState<{ tokens: TokenOption[]; config: PublicConfig | null; error: string | null }>(() => ({
+    tokens: cache?.tokens ?? [],
+    config: cache?.config ?? null,
+    error: null,
+  }));
   useEffect(() => {
-    Promise.all([fetch("/api/tokens").then((r) => r.json()), fetch("/api/config").then((r) => r.json())])
-      .then(([t, c]) => {
-        if (t.error) setError(t.error);
-        else setTokens(sortTokens(t));
-        setConfig(c);
-      })
-      .catch(() => setError("Couldn't reach Leeway. Refresh to try again."));
+    loadAll()
+      .then((d) => setState({ tokens: d.tokens, config: d.config, error: null }))
+      .catch((e: Error) => {
+        inflight = null;
+        setState((s) => ({ ...s, error: e.message || "Couldn't reach Leeway. Refresh to try again." }));
+      });
   }, []);
-  return { tokens, config, error };
+  return state;
 }
 
 export async function postJson<T>(url: string, body: unknown): Promise<T> {
@@ -58,4 +68,16 @@ export async function postJson<T>(url: string, body: unknown): Promise<T> {
   const data = await res.json().catch(() => ({ error: "Unexpected response." }));
   if (!res.ok || data.error) throw new Error(data.error ?? `Request failed (${res.status})`);
   return data as T;
+}
+
+export const fmtUsd = (n: number) =>
+  n >= 1000 ? `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}` : `$${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+
+export function fmtAmount(s: string | number) {
+  const n = Number(s);
+  if (!Number.isFinite(n)) return String(s);
+  if (n === 0) return "0";
+  if (n >= 1000) return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  if (n >= 1) return n.toLocaleString(undefined, { maximumFractionDigits: 4 });
+  return n.toPrecision(4).replace(/\.?0+$/, "");
 }

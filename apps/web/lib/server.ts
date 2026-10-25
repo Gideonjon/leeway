@@ -1,5 +1,5 @@
 import "server-only";
-import { LeewayDb, loadConfig, OneClickClient, ZcashRpcWallet, type LeewayConfig, type Token } from "@leeway/core";
+import { LeewayDb, loadConfig, OneClickClient, OneClickError, ZcashRpcWallet, type LeewayConfig, type Token } from "@leeway/core";
 
 interface Services {
   cfg: LeewayConfig;
@@ -44,8 +44,16 @@ export function fail(message: string, status = 400) {
   return json({ error: message }, status);
 }
 
-/** Turns thrown errors into a short message a person can act on. */
+/**
+ * Turns thrown errors into a short message a person can act on.
+ * Only 1Click's own messages (bad amount, unsupported route…) reach the user; anything
+ * internal (database, wallet, network) is logged and replaced with a plain retry message.
+ */
 export function errorMessage(e: unknown): string {
-  const msg = e instanceof Error ? e.message : String(e);
-  return msg.replace(/^1Click (GET|POST) \S+ failed: /, "");
+  if (e instanceof OneClickError) {
+    if (e.status >= 500) return "The route provider is busy. Try again in a moment.";
+    return e.message.replace(/^1Click (GET|POST) \S+ failed: /, "");
+  }
+  console.error("[leeway]", e);
+  return "Leeway couldn't do that just now. Nothing was sent. Try again in a moment.";
 }

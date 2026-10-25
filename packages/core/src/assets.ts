@@ -19,9 +19,9 @@ export function zecPrice(tokens: Token[]): number {
 /** Decimal string → integer base units, without floating point. "1.5", 6 → "1500000". */
 export function toBaseUnits(amount: string, decimals: number): string {
   const s = amount.trim();
-  if (!/^\d*\.?\d*$/.test(s) || s === "" || s === ".") throw new Error(`invalid amount: ${amount}`);
+  if (!/^\d*\.?\d*$/.test(s) || s === "" || s === ".") throw new Error("Enter a number, like 25 or 0.5.");
   const [whole = "0", frac = ""] = s.split(".");
-  if (frac.length > decimals) throw new Error(`too many decimal places (max ${decimals})`);
+  if (frac.length > decimals) throw new Error(`Use at most ${decimals} decimal places for this token.`);
   const units = BigInt(whole || "0") * 10n ** BigInt(decimals) + BigInt((frac + "0".repeat(decimals)).slice(0, decimals) || "0");
   return units.toString();
 }
