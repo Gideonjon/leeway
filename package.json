@@ -1,0 +1,22 @@
+{
+  "name": "leeway",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Leeway — private cross-chain payments, shielded DCA and cashback in shielded ZEC.",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @leeway/web",
+    "build": "npm run build -w @leeway/core && npm run build -w @leeway/web",
+    "worker": "npm run start -w @leeway/worker",
+    "test": "npm run test -w @leeway/core",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "db:migrate": "psql \"$DATABASE_URL\" -f db/schema.sql",
+    "contracts:test": "cd contracts && forge test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

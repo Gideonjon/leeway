@@ -1,0 +1,9 @@
+node_modules
+dist
+.next
+.env
+*.log
+contracts/out
+contracts/cache
+contracts/broadcast
+contracts/lib
