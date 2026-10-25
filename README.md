@@ -14,7 +14,7 @@ Leeway is one app with three features on one engine. Every flow follows the same
 | Path | What |
 | --- | --- |
 | `packages/core` | 1Click client, cashback math, Ghost Send state machine, Zcash wallet RPC, Postgres access. 26 unit tests. |
-| `apps/web` | Next.js 15 app: Send / Swap / DCA composer, tracking, public numbers, API routes |
+| `apps/web` | Next.js 15 app: Ghost Send, Swap, DCA and Cashback widgets with a live route panel, a token picker (1,788 token and 31 chain icons, self-hosted), EVM wallet connect with one-click deposit, an activity drawer, tracking, public numbers, API routes |
 | `apps/worker` | Job loop: swap polling, Ghost Send legs, cashback accrual and payouts, DCA keeper |
 | `contracts` | Foundry: `LeewayDCA.sol`, 11 tests including a fuzz test, Base deploy script |
 | `db/schema.sql` | Postgres schema (idempotent) |
