@@ -20,6 +20,17 @@ Leeway is one app with three features on one engine. Every flow follows the same
 | `db/schema.sql` | Postgres schema (idempotent) |
 | `scripts/` | Mock 1Click + mock wallet, and an end-to-end Ghost Send script |
 
+## Wallets
+
+| Network | How it connects | What it does |
+| --- | --- | --- |
+| EVM | Every installed wallet via EIP-6963 (MetaMask, Rabby, Coinbase, OKX, Brave, Phantom EVM…), plus WalletConnect for mobile wallets by QR | Fills the refund address, pays the deposit in one tap (native or ERC-20), runs DCA |
+| Solana | Every Wallet Standard wallet (Phantom, Solflare, Backpack…) | Fills the refund address, pays the deposit in one tap (SOL, SPL or Token-2022) |
+| Zcash | ZIP-321 payment request link and QR: Noir, Zodl, Zingo, YWallet, Cake | Opens the user's wallet with address and amount filled in |
+| BTC, LTC, DOGE | Standard payment URI QR | Opens the user's wallet |
+
+One EVM and one Solana wallet can be connected at once, and both reconnect on return. Zcash wallets don't expose a connection API to websites today (Noir's Zcash WalletConnect work is in progress), so Zcash pays by payment request. `scripts/e2e-wallets.cjs` tests all of this with an injected EVM wallet on a local chain and an injected Solana wallet.
+
 ## Run it
 
 ```bash

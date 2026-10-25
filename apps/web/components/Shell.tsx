@@ -6,7 +6,9 @@ import { shortAddr } from "@/lib/chains";
 import { ActivityDrawer } from "./ActivityDrawer";
 import { useActivity } from "./activity";
 import { Mark } from "./Logo";
+import { ChainIcon } from "./TokenIcon";
 import { useWallet, WalletProvider } from "./Wallet";
+import { WalletModal } from "./WalletModal";
 
 const NAV = [
   { href: "/", label: "Ghost Send" },
@@ -49,44 +51,31 @@ function ThemeToggle() {
 }
 
 function ConnectButton() {
-  const { address, available, connect, disconnect } = useWallet();
+  const { evm, sol } = useWallet();
   const [open, setOpen] = useState(false);
-  if (!address) {
-    return (
-      <button className="connect" onClick={() => void connect()} disabled={!available} title={available ? undefined : "No browser wallet found"}>
-        Connect
-      </button>
-    );
-  }
+  const connected = [evm && { key: "evm", icon: evm.icon, chain: "eth", address: evm.address }, sol && { key: "sol", icon: sol.icon, chain: "sol", address: sol.address }].filter(
+    Boolean,
+  ) as { key: string; icon: string; chain: string; address: string }[];
   return (
-    <div className="connect-wrap">
-      <button className="connect connect--on" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
-        <span className="connect__dot" aria-hidden="true" />
-        {shortAddr(address, 5, 4)}
-      </button>
-      {open && (
-        <div className="menu" role="menu">
-          <button
-            role="menuitem"
-            onClick={() => {
-              void navigator.clipboard?.writeText(address);
-              setOpen(false);
-            }}
-          >
-            Copy address
-          </button>
-          <button
-            role="menuitem"
-            onClick={() => {
-              disconnect();
-              setOpen(false);
-            }}
-          >
-            Disconnect
-          </button>
-        </div>
+    <>
+      {connected.length === 0 ? (
+        <button className="connect" onClick={() => setOpen(true)}>
+          Connect
+        </button>
+      ) : (
+        <button className="connect connect--on" onClick={() => setOpen(true)} aria-label="Wallets">
+          <span className="connect__stack">
+            {connected.map((c) => (
+              <span key={c.key} className="connect__chain">
+                <ChainIcon chain={c.chain} size={18} />
+              </span>
+            ))}
+          </span>
+          {connected.length === 1 ? shortAddr(connected[0].address, 4, 4) : `${connected.length} wallets`}
+        </button>
       )}
-    </div>
+      {open && <WalletModal onClose={() => setOpen(false)} />}
+    </>
   );
 }
 

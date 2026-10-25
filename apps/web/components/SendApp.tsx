@@ -2,6 +2,8 @@
 import QRCode from "qrcode";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { addressHint, chainName, isEvmChain, shortAddr } from "@/lib/chains";
+import { paymentUri } from "@/lib/payuri";
+import { WalletModal } from "./WalletModal";
 import { addActivity } from "./activity";
 import { phaseOf } from "./ActivityDrawer";
 import { PassagePanel, type Preview } from "./Passage";
@@ -109,6 +111,7 @@ export function SendApp({ mode }: { mode: Mode }) {
   const [started, setStarted] = useState<Started | null>(null);
   const [live, setLive] = useState<{ type: string; state?: string; status?: string; releaseAt?: string | null } | null>(null);
   const [paidTx, setPaidTx] = useState<string | null>(null);
+  const [walletOpen, setWalletOpen] = useState(false);
 
   // Remember the user's cashback address on this device.
   useEffect(() => {
@@ -134,8 +137,8 @@ export function SendApp({ mode }: { mode: Mode }) {
   // Pre-fill the refund address from the connected wallet when the sending chain is EVM.
   useEffect(() => {
     if (refundEdited) return;
-    setRefundTo(wallet.address && from && isEvmChain(from.blockchain) ? wallet.address : "");
-  }, [wallet.address, from, refundEdited]);
+    setRefundTo(from ? (wallet.addressFor(from.blockchain) ?? "") : "");
+  }, [wallet, from, refundEdited]);
 
   // Live quote, debounced; refreshed every 30s while idle.
   const reqId = useRef(0);
@@ -247,6 +250,10 @@ export function SendApp({ mode }: { mode: Mode }) {
 
   async function payWithWallet() {
     if (!started || !from) return;
+    if (!payer) {
+      setWalletOpen(true);
+      return;
+    }
     setError(null);
     setBusy("Confirm in your wallet…");
     try {
@@ -276,7 +283,10 @@ export function SendApp({ mode }: { mode: Mode }) {
   };
 
   const showPanel = Boolean(preview && from && to);
-  const canWalletPay = Boolean(from && isEvmChain(from.blockchain) && wallet.available && !started?.depositMemo);
+  const payChain = from?.blockchain ?? "";
+  const canWalletPay = Boolean(from && (isEvmChain(payChain) || payChain === "sol") && wallet.canPay(payChain) && !started?.depositMemo);
+  const payer = from ? wallet.addressFor(payChain) : null;
+  const payUri = started && from ? paymentUri(payChain, started.depositAddress, started.amountIn, { mint: from.contractAddress }) : null;
 
   return (
     <main className={`stage ${showPanel ? "stage--split" : ""}`}>
@@ -354,8 +364,8 @@ export function SendApp({ mode }: { mode: Mode }) {
                   spellCheck={false}
                   autoComplete="off"
                 />
-                {mode === "swap" && wallet.address && to && isEvmChain(to.blockchain) && !recipient && (
-                  <button type="button" className="addr__fill" onClick={() => setRecipient(wallet.address!)}>
+                {mode === "swap" && to && wallet.addressFor(to.blockchain) && !recipient && (
+                  <button type="button" className="addr__fill" onClick={() => setRecipient(wallet.addressFor(to.blockchain)!)}>
                     Use mine
                   </button>
                 )}
@@ -435,13 +445,19 @@ export function SendApp({ mode }: { mode: Mode }) {
 
                 {canWalletPay && !paidTx && (
                   <button className="cta" onClick={() => void payWithWallet()} disabled={Boolean(busy)}>
-                    {busy ?? (wallet.address ? `Pay with ${shortAddr(wallet.address, 5, 4)}` : "Connect and pay")}
+                    {busy ?? (payer ? `Pay with ${shortAddr(payer, 5, 4)}` : `Connect a ${chainName(payChain)} wallet to pay`)}
                   </button>
                 )}
+                {payUri && !canWalletPay && (
+                  <a className="cta cta--link" href={payUri}>
+                    {payChain === "zec" ? "Open in Zcash wallet" : `Open in ${chainName(payChain)} wallet`}
+                  </a>
+                )}
+                {payChain === "zec" && <p className="hint">Works with Noir, Zodl, Zingo, YWallet and Cake. On a phone, scan the QR from your wallet.</p>}
                 {paidTx && <p className="note">Sent from your wallet. It starts as soon as the deposit confirms.</p>}
 
                 <div className="deposit__addr">
-                  <Qr value={started.depositAddress} />
+                  <Qr value={payUri ?? started.depositAddress} />
                   <div className="deposit__addr-text">
                     <span className="tcard__label">{canWalletPay ? "Or send it yourself to" : "Deposit address"}</span>
                     <code>{started.depositAddress}</code>
@@ -524,6 +540,8 @@ export function SendApp({ mode }: { mode: Mode }) {
           holdMinutesLeft={holdLeft}
         />
       )}
+
+      {walletOpen && <WalletModal onClose={() => setWalletOpen(false)} />}
 
       {picker && (
         <TokenPicker

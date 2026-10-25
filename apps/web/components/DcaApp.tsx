@@ -1,11 +1,12 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { createPublicClient, createWalletClient, custom, erc20Abi, http, keccak256, parseUnits, toBytes, type Address, type EIP1193Provider } from "viem";
+import { createPublicClient, createWalletClient, custom, erc20Abi, http, keccak256, parseUnits, toBytes, type Address } from "viem";
 import { base } from "viem/chains";
 import { shortAddr } from "@/lib/chains";
 import { TokenIcon } from "./TokenIcon";
 import { fmtUsd, postJson, useTokens } from "./useTokens";
 import { useWallet } from "./Wallet";
+import { WalletModal } from "./WalletModal";
 
 const USDC: Address = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
 const FREQS = [
@@ -41,7 +42,6 @@ interface Plan {
 }
 
 const isShielded = (a: string) => /^(u1[02-9ac-hj-np-z]{100,}|zs1[02-9ac-hj-np-z]{75})$/.test(a.trim());
-const eth = () => (globalThis as unknown as { ethereum?: EIP1193Provider }).ethereum;
 
 export function DcaApp() {
   const { tokens, config } = useTokens();
@@ -54,6 +54,7 @@ export function DcaApp() {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [plans, setPlans] = useState<Plan[]>([]);
+  const [walletOpen, setWalletOpen] = useState(false);
   const contract = config?.dcaContract as Address | null | undefined;
   const zecPrice = tokens.find((t) => t.assetId === "nep141:zec.omft.near")?.price ?? 0;
 
@@ -80,13 +81,15 @@ export function DcaApp() {
   async function create() {
     setError(null);
     setDone(null);
-    const provider = eth();
     if (!contract) return;
-    if (!provider) return setError("No browser wallet found. Open Leeway in a wallet app that supports Base.");
     if (!isShielded(zec)) return setError("Use a shielded Zcash address. It starts with u1 or zs1.");
     if (per < 5) return setError("The smallest buy is 5 USDC, so network fees don't eat it.");
-    const account = (wallet.address ?? (await wallet.connect())) as Address | null;
-    if (!account) return;
+    if (!wallet.evm) {
+      setWalletOpen(true);
+      return;
+    }
+    const provider = wallet.evm.provider;
+    const account = wallet.evm.address;
     const w = createWalletClient({ chain: base, transport: custom(provider), account });
     const pub = createPublicClient({ chain: base, transport: http() });
     try {
@@ -117,7 +120,7 @@ export function DcaApp() {
   }
 
   async function stop(id: number) {
-    const provider = eth();
+    const provider = wallet.evm?.provider;
     if (!provider || !wallet.address || !contract) return;
     setError(null);
     try {
@@ -286,6 +289,7 @@ export function DcaApp() {
           </ol>
         )}
       </section>
+      {walletOpen && <WalletModal onClose={() => setWalletOpen(false)} />}
     </main>
   );
 }

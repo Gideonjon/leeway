@@ -6,7 +6,7 @@ import { randomBytes } from "node:crypto";
 const TOKENS = [
   { assetId: "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near", decimals: 6, blockchain: "base", symbol: "USDC", price: 1, contractAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
   { assetId: "nep141:eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near", decimals: 6, blockchain: "eth", symbol: "USDC", price: 1, contractAddress: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48" },
-  { assetId: "nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near", decimals: 6, blockchain: "sol", symbol: "USDC", price: 1 },
+  { assetId: "nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near", decimals: 6, blockchain: "sol", symbol: "USDC", price: 1, contractAddress: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v" },
   { assetId: "nep141:arb-0xaf88d065e77c8cc2239327c5edb3a432268e5831.omft.near", decimals: 6, blockchain: "arb", symbol: "USDC", price: 1, contractAddress: "0xaf88d065e77c8cc2239327c5edb3a432268e5831" },
   { assetId: "nep141:eth-0xdac17f958d2ee523a2206206994597c13d831ec7.omft.near", decimals: 6, blockchain: "eth", symbol: "USDT", price: 1, contractAddress: "0xdac17f958d2ee523a2206206994597c13d831ec7" },
   { assetId: "nep141:tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near", decimals: 6, blockchain: "tron", symbol: "USDT", price: 1 },
@@ -33,6 +33,8 @@ const wallet = { taddrBalances: new Map(), txs: new Map(), sends: [], ops: new M
 const body = (req) => new Promise((r) => { let s = ""; req.on("data", (c) => (s += c)); req.on("end", () => r(s ? JSON.parse(s) : {})); });
 const send = (res, code, obj) => { res.writeHead(code, { "content-type": "application/json" }); res.end(JSON.stringify(obj)); };
 const hex = (n) => randomBytes(n).toString("hex");
+const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+const b58 = (bytes) => { let n = BigInt("0x" + Buffer.from(bytes).toString("hex")); let s = ""; while (n > 0n) { s = B58[Number(n % 58n)] + s; n /= 58n; } return s; };
 
 http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
@@ -44,7 +46,7 @@ http.createServer(async (req, res) => {
     const inUsd = (Number(q.amount) / 10 ** o.decimals) * o.price;
     const fee = (q.appFees ?? []).reduce((s, f) => s + f.fee, 0) / 10_000;
     const outAmt = (inUsd * (1 - fee)) / d.price;
-    const dep = o.blockchain === "zec" ? `t1${hex(16)}` : `0x${hex(20)}`;
+    const dep = o.blockchain === "zec" ? `t1${hex(16)}` : o.blockchain === "sol" ? b58(randomBytes(32)) : `0x${hex(20)}`;
     const quote = {
       amountIn: q.amount, amountInFormatted: String(Number(q.amount) / 10 ** o.decimals), amountInUsd: inUsd.toFixed(2),
       minAmountIn: q.amount, amountOut: String(Math.floor(outAmt * 10 ** d.decimals)), amountOutFormatted: outAmt.toFixed(6),
@@ -69,6 +71,13 @@ http.createServer(async (req, res) => {
       wallet.taddrBalances.set(s.req.recipient, BigInt(s.amountOut));
     }
     return send(res, 200, { ok: true });
+  }
+  // Minimal Solana JSON-RPC for building deposit transactions in tests.
+  if (req.method === "POST" && url.pathname === "/solana") {
+    const r = await body(req);
+    if (r.method === "getLatestBlockhash") return send(res, 200, { jsonrpc: "2.0", id: r.id, result: { context: { slot: 1 }, value: { blockhash: "EETubP5AKHgjPAhzPAFcb8BAY1hMH639CWCFTqi3hq1k", lastValidBlockHeight: 1000 } } });
+    if (r.method === "getAccountInfo") return send(res, 200, { jsonrpc: "2.0", id: r.id, result: { context: { slot: 1 }, value: { owner: "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA", data: ["", "base64"], lamports: 1, executable: false } } });
+    return send(res, 200, { jsonrpc: "2.0", id: r.id, error: { code: -32601, message: "no" } });
   }
   if (req.method === "GET" && url.pathname === "/control/swaps") return send(res, 200, [...swaps.entries()].map(([k, v]) => ({ depositAddress: k, ...v })));
   send(res, 404, { message: "no route" });
