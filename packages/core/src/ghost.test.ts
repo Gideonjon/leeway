@@ -33,6 +33,8 @@ const ghost = (over: Partial<GhostTransfer> = {}): GhostTransfer => ({
   updatedAt: now,
   completedAt: null,
   purgedAt: null,
+  shieldStartedAt: null,
+  needsReview: false,
   ...over,
 });
 

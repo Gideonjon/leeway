@@ -1,9 +1,11 @@
-import { errorMessage, fail, json, services } from "@/lib/server";
+import { errorMessage, fail, guard, json, services } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
 
 /** Tells 1Click about a deposit the user just sent from their wallet, so the swap starts sooner. */
 export async function POST(req: Request) {
+  const blocked = await guard(req, "deposit", { perMin: 20 });
+  if (blocked) return blocked;
   const body = (await req.json().catch(() => ({}))) as { txHash?: string; depositAddress?: string };
   if (!body.txHash || !body.depositAddress) return fail("Missing txHash or depositAddress.");
   const { db, oneclick } = services();

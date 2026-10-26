@@ -42,7 +42,7 @@ export function CashbackApp() {
       <section className="widget" aria-label="Cashback">
         <header className="widget__head">
           <h1>Cashback</h1>
-          <p>{rate}% of every swap comes back to you as shielded ZEC. No account, no points. Just your address.</p>
+          <p>{rate}% of every swap comes back to you in shielded ZEC. Your shielded address is the only thing that tracks it.</p>
         </header>
         <form
           className="widget__body"
@@ -86,7 +86,7 @@ export function CashbackApp() {
       <section className="passage-panel" aria-label="How cashback works">
         <header className="passage-panel__head">
           <h2>Where it comes from</h2>
-          <span className="tag">paid daily</span>
+          <p>Paid once a day in a single shielded transaction.</p>
         </header>
         <div className="split-bar" aria-hidden="true">
           <span className="split-bar__keep" style={{ flex: (config?.appFeeBps ?? 50) - (config?.cashbackBps ?? 20) }} />

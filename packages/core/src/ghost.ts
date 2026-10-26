@@ -53,6 +53,10 @@ export interface GhostTransfer {
   updatedAt: Date;
   completedAt: Date | null;
   purgedAt: Date | null;
+  /** Set just before the wallet shields leg-one funds; detects a crash mid-shield. */
+  shieldStartedAt: Date | null;
+  /** Stopped for a human to check the wallet before anything else happens. */
+  needsReview: boolean;
 }
 
 export type GhostAction =

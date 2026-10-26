@@ -80,6 +80,8 @@ const ghostFromRow = (r: Record<string, unknown>): GhostTransfer => ({
   updatedAt: r.updated_at as Date,
   completedAt: (r.completed_at as Date) ?? null,
   purgedAt: (r.purged_at as Date) ?? null,
+  shieldStartedAt: (r.shield_started_at as Date) ?? null,
+  needsReview: Boolean(r.needs_review),
 });
 
 const GHOST_COLUMNS: Record<keyof GhostTransfer, string> = {
@@ -104,6 +106,8 @@ const GHOST_COLUMNS: Record<keyof GhostTransfer, string> = {
   updatedAt: "updated_at",
   completedAt: "completed_at",
   purgedAt: "purged_at",
+  shieldStartedAt: "shield_started_at",
+  needsReview: "needs_review",
 };
 
 const toDb = (v: unknown) => (typeof v === "bigint" ? v.toString() : v);
@@ -187,7 +191,7 @@ export class LeewayDb {
 
   // ------------------------------------------------------------------ ghost
 
-  async insertGhost(g: Omit<GhostTransfer, "id" | "createdAt" | "updatedAt" | "completedAt" | "purgedAt">): Promise<GhostTransfer> {
+  async insertGhost(g: Omit<GhostTransfer, "id" | "createdAt" | "updatedAt" | "completedAt" | "purgedAt" | "shieldStartedAt" | "needsReview">): Promise<GhostTransfer> {
     const entries = Object.entries(g) as [keyof GhostTransfer, unknown][];
     const cols = entries.map(([k]) => GHOST_COLUMNS[k]);
     const vals = entries.map(([, v]) => toDb(v));
@@ -220,7 +224,7 @@ export class LeewayDb {
 
   /** Transfers the worker still has to act on (including settled ones awaiting purge). */
   async workableGhosts(): Promise<GhostTransfer[]> {
-    const { rows } = await this.pool.query(`select * from ghost_transfers where purged_at is null order by created_at limit 200`);
+    const { rows } = await this.pool.query(`select * from ghost_transfers where purged_at is null and not needs_review order by created_at limit 200`);
     return rows.map(ghostFromRow);
   }
 
@@ -310,21 +314,39 @@ export class LeewayDb {
   }
 
   async cashbackPaidSince(since: Date): Promise<bigint> {
-    const { rows } = await this.pool.query(`select coalesce(sum(total_zat), 0) as s from cashback_payouts where created_at >= $1`, [since]);
+    const { rows } = await this.pool.query(`select coalesce(sum(total_zat), 0) as s from cashback_payouts where created_at >= $1 and status in ('sending', 'sent', 'unknown')`, [since]);
     return BigInt(rows[0].s);
   }
 
-  async recordPayout(txid: string, lines: PayoutLine[]): Promise<void> {
+  /** Reserves entries for one payout before any money moves. Returns the payout id. */
+  async reservePayout(lines: PayoutLine[]): Promise<string> {
     const client = await this.pool.connect();
     try {
       await client.query("begin");
       const total = lines.reduce((s, l) => s + l.zat, 0n);
       const { rows } = await client.query(
-        `insert into cashback_payouts (txid, total_zat, recipients) values ($1,$2,$3) returning id`,
-        [txid, total.toString(), lines.length],
+        `insert into cashback_payouts (txid, total_zat, recipients, status) values (null, $1, $2, 'sending') returning id`,
+        [total.toString(), lines.length],
       );
       const ids = lines.flatMap((l) => l.entryIds);
-      await client.query(`update cashback_entries set status = 'paid', payout_id = $1 where id = any($2)`, [rows[0].id, ids]);
+      const res = await client.query(`update cashback_entries set status = 'reserved', payout_id = $1 where id = any($2) and status = 'pending'`, [rows[0].id, ids]);
+      if (res.rowCount !== ids.length) throw new Error("cashback entries changed while reserving; retrying next tick");
+      await client.query("commit");
+      return rows[0].id;
+    } catch (e) {
+      await client.query("rollback");
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+
+  async markPayoutSent(id: string, txid: string) {
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      await client.query(`update cashback_payouts set status = 'sent', txid = $2 where id = $1`, [id, txid]);
+      await client.query(`update cashback_entries set status = 'paid' where payout_id = $1`, [id]);
       await client.query("commit");
     } catch (e) {
       await client.query("rollback");
@@ -332,6 +354,35 @@ export class LeewayDb {
     } finally {
       client.release();
     }
+  }
+
+  /** The wallet refused the send before broadcast: release the entries for the next payout. */
+  async releasePayout(id: string, error: string) {
+    const client = await this.pool.connect();
+    try {
+      await client.query("begin");
+      await client.query(`update cashback_payouts set status = 'failed', error = $2 where id = $1`, [id, error.slice(0, 500)]);
+      await client.query(`update cashback_entries set status = 'pending', payout_id = null where payout_id = $1`, [id]);
+      await client.query("commit");
+    } catch (e) {
+      await client.query("rollback");
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+
+  /** Outcome unknown: leave reserved for a human to reconcile against the wallet. */
+  async flagPayout(id: string, error: string) {
+    await this.pool.query(`update cashback_payouts set status = 'unknown', error = $2 where id = $1`, [id, error.slice(0, 500)]);
+  }
+
+  /** Payouts that started but never finished (a crash mid-send). Never resent automatically. */
+  async stuckPayouts(): Promise<{ id: string; createdAt: Date; status: string }[]> {
+    const { rows } = await this.pool.query(
+      `select id, created_at, status from cashback_payouts where status = 'unknown' or (status = 'sending' and created_at < now() - interval '10 minutes')`,
+    );
+    return rows.map((r) => ({ id: r.id, createdAt: r.created_at, status: r.status }));
   }
 
   async cashbackForAddress(address: string): Promise<{ pendingZat: bigint; paidZat: bigint }> {
@@ -356,5 +407,86 @@ export class LeewayDb {
       cashbackPaidZat: BigInt(r.cashback_paid_zat),
       cashbackPendingZat: BigInt(r.cashback_pending_zat),
     };
+  }
+
+  // ------------------------------------------------------------- privacy
+
+  /**
+   * After the purge window, erase everything that could link the two legs of a Ghost Send:
+   * the quotes (which name the hop address on both legs), deposit addresses, and memos.
+   * Amounts and statuses stay for aggregate stats.
+   */
+  async scrubGhostSwaps(ghostId: string) {
+    await this.pool.query(
+      `update swaps set quote = '{}'::jsonb, deposit_address = 'purged:' || id::text, deposit_memo = null, cashback_address = null
+       where parent_id = $1`,
+      [ghostId],
+    );
+  }
+
+  async ghostVolumeSince(since: Date): Promise<number> {
+    const { rows } = await this.pool.query(
+      `select coalesce(sum(nullif(amount_in_usd, '')::numeric), 0) as v from ghost_transfers where created_at >= $1 and state not in ('refunded', 'failed')`,
+      [since],
+    );
+    return Number(rows[0].v);
+  }
+
+  // ------------------------------------------------------------ operations
+
+  /** Holds a Postgres advisory lock for the life of the process. Only one worker may run. */
+  async acquireWorkerLock(): Promise<(() => Promise<void>) | null> {
+    const client = await this.pool.connect();
+    const { rows } = await client.query(`select pg_try_advisory_lock(4206900) as ok`);
+    if (!rows[0].ok) {
+      client.release();
+      return null;
+    }
+    return async () => {
+      await client.query(`select pg_advisory_unlock(4206900)`).catch(() => undefined);
+      client.release();
+    };
+  }
+
+  async heartbeat(job: string, error?: string) {
+    if (error) {
+      await this.pool.query(
+        `insert into worker_heartbeats (job, error_at, last_error) values ($1, now(), $2)
+         on conflict (job) do update set error_at = now(), last_error = $2`,
+        [job, error.slice(0, 500)],
+      );
+    } else {
+      await this.pool.query(`insert into worker_heartbeats (job, ok_at) values ($1, now()) on conflict (job) do update set ok_at = now()`, [job]);
+    }
+  }
+
+  async heartbeats(): Promise<{ job: string; okAt: Date | null; errorAt: Date | null; lastError: string | null }[]> {
+    const { rows } = await this.pool.query(`select * from worker_heartbeats order by job`);
+    return rows.map((r) => ({ job: r.job, okAt: r.ok_at, errorAt: r.error_at, lastError: r.last_error }));
+  }
+
+  async reviewQueue(): Promise<{ ghosts: number; payouts: number }> {
+    const { rows } = await this.pool.query(
+      `select (select count(*) from ghost_transfers where needs_review) as g,
+              (select count(*) from cashback_payouts where status = 'unknown' or (status = 'sending' and created_at < now() - interval '10 minutes')) as p`,
+    );
+    return { ghosts: Number(rows[0].g), payouts: Number(rows[0].p) };
+  }
+
+  /** Fixed-window counter. Returns false once `limit` is exceeded in the current window. */
+  async rateLimit(key: string, limit: number, windowSec = 60): Promise<boolean> {
+    const { rows } = await this.pool.query(
+      `insert into rate_limits (key, window_start, count)
+       values ($1, to_timestamp(floor(extract(epoch from now()) / $2) * $2), 1)
+       on conflict (key, window_start) do update set count = rate_limits.count + 1
+       returning count`,
+      [key, windowSec],
+    );
+    if (Math.random() < 0.01) void this.pool.query(`delete from rate_limits where window_start < now() - interval '1 hour'`).catch(() => undefined);
+    return rows[0].count <= limit;
+  }
+
+  async ping() {
+    await this.pool.query("select 1");
   }
 }

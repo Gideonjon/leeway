@@ -12,13 +12,13 @@ function WalletIcon({ src, name }: { src: string; name: string }) {
   return <img className="wicon" src={src} alt="" width={36} height={36} />;
 }
 
-function Row(props: { icon: React.ReactNode; name: string; note?: string; action: React.ReactNode; onClick?: () => void; disabled?: boolean }) {
+function Row(props: { icon: React.ReactNode; name: string; note?: string; addr?: boolean; action: React.ReactNode; onClick?: () => void; disabled?: boolean }) {
   const body = (
     <>
       {props.icon}
       <span className="wrow__text">
         <strong>{props.name}</strong>
-        {props.note && <span>{props.note}</span>}
+        {props.note && <span className={props.addr ? "is-addr" : undefined}>{props.note}</span>}
       </span>
       <span className="wrow__action">{props.action}</span>
     </>
@@ -91,7 +91,7 @@ export function WalletModal({ onClose }: { onClose: () => void }) {
             <WcQr uri={w.wcUri} />
           ) : (
             <>
-              <p className="wsheet__intro">Connect one wallet per network. Leeway fills in your refund address and pays deposits in one tap. Nothing moves without your approval.</p>
+              <p className="wsheet__intro">Connect one wallet per network. Leeway uses it to fill in your refund address and to pay deposits, and asks your wallet to approve every payment.</p>
               {error && (
                 <p className="note note--error" role="alert">
                   {error}
@@ -108,6 +108,7 @@ export function WalletModal({ onClose }: { onClose: () => void }) {
                     icon={<WalletIcon src={w.evm.icon} name={w.evm.name} />}
                     name={w.evm.name}
                     note={shortAddr(w.evm.address, 6, 4)}
+                    addr
                     action={<span className="link">Disconnect</span>}
                     onClick={() => w.disconnect("evm")}
                   />
@@ -138,6 +139,7 @@ export function WalletModal({ onClose }: { onClose: () => void }) {
                     icon={<WalletIcon src={w.sol.icon} name={w.sol.name} />}
                     name={w.sol.name}
                     note={shortAddr(w.sol.address, 6, 4)}
+                    addr
                     action={<span className="link">Disconnect</span>}
                     onClick={() => w.disconnect("sol")}
                   />

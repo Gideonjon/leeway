@@ -23,9 +23,26 @@ export interface ShieldedWallet {
   send(outputs: SendOutput[]): Promise<string>;
   /** Confirmations for a wallet transaction (0 if unconfirmed or unknown). */
   confirmations(txid: string): Promise<number>;
+  /** Names of required RPC methods the wallet does not implement. */
+  missingMethods(): Promise<string[]>;
 }
 
 type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
+
+/** The wallet reported the send failed before broadcast: nothing left the wallet, safe to retry. */
+export class ZcashSendFailed extends Error {}
+/** The outcome is unknown (timeout, lost connection): never retry automatically. */
+export class ZcashSendUnknown extends Error {}
+
+/** RPC methods Leeway depends on. Checked at worker start-up. */
+export const REQUIRED_WALLET_METHODS = [
+  "z_getaddressforaccount",
+  "z_listunifiedreceivers",
+  "listunspent",
+  "z_sendmany",
+  "z_getoperationstatus",
+  "gettransaction",
+] as const;
 
 export const zatToZecString = (zat: bigint): string => {
   const whole = zat / 100_000_000n;
@@ -67,9 +84,16 @@ export class ZcashRpcWallet implements ShieldedWallet {
       method: "POST",
       headers,
       body: JSON.stringify({ jsonrpc: "1.0", id: ++this.id, method, params }),
+      signal: AbortSignal.timeout(60_000),
     });
-    const body = (await res.json()) as { result: T; error: { code: number; message: string } | null };
-    if (body.error) throw new Error(`zcash rpc ${method}: ${body.error.message}`);
+    const text = await res.text();
+    let body: { result: T; error: { code: number; message: string } | null };
+    try {
+      body = JSON.parse(text);
+    } catch {
+      throw new Error(`zcash rpc ${method}: HTTP ${res.status}`);
+    }
+    if (body.error) throw new Error(`zcash rpc ${method}: [${body.error.code}] ${body.error.message}`);
     return body.result;
   }
 
@@ -114,7 +138,14 @@ export class ZcashRpcWallet implements ShieldedWallet {
       ...(o.memo ? { memo: memoHex(o.memo) } : {}),
     }));
     // Leg-2 deposits are transparent addresses on Zcash, so the policy must allow revealed recipients.
-    const opid = await this.rpc<string>("z_sendmany", [ua, amounts, 1, null, "AllowRevealedRecipients"]);
+    let opid: string;
+    try {
+      opid = await this.rpc<string>("z_sendmany", [ua, amounts, 1, null, "AllowRevealedRecipients"]);
+    } catch (e) {
+      // The RPC rejected the request outright (bad params, insufficient funds): nothing was sent.
+      if (/zcash rpc z_sendmany: \[/.test(String(e))) throw new ZcashSendFailed(String(e));
+      throw new ZcashSendUnknown(String(e));
+    }
     return this.awaitOperation(opid);
   }
 
@@ -125,6 +156,19 @@ export class ZcashRpcWallet implements ShieldedWallet {
     } catch {
       return 0;
     }
+  }
+
+  async missingMethods(): Promise<string[]> {
+    const missing: string[] = [];
+    for (const m of REQUIRED_WALLET_METHODS) {
+      try {
+        // Called with no params: an implemented method answers with a parameter error, not "method not found".
+        await this.rpc(m, []);
+      } catch (e) {
+        if (/method not found|-32601|not implemented|unknown method/i.test(String(e))) missing.push(m);
+      }
+    }
+    return missing;
   }
 
   private async awaitOperation(opid: string): Promise<string> {
@@ -138,8 +182,8 @@ export class ZcashRpcWallet implements ShieldedWallet {
         await this.rpc("z_getoperationresult", [[opid]]).catch(() => undefined);
         return op.result.txid;
       }
-      if (op?.status === "failed") throw new Error(`zcash operation failed: ${op.error?.message ?? "unknown"}`);
-      if (Date.now() - started > this.opTimeoutMs) throw new Error(`zcash operation ${opid} timed out`);
+      if (op?.status === "failed") throw new ZcashSendFailed(`zcash operation failed: ${op.error?.message ?? "unknown"}`);
+      if (Date.now() - started > this.opTimeoutMs) throw new ZcashSendUnknown(`zcash operation ${opid} timed out`);
       await new Promise((r) => setTimeout(r, this.opPollMs));
     }
   }

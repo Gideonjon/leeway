@@ -1,0 +1,71 @@
+# Leeway production stack: Postgres, migrations, web, worker.
+#   cp .env.example .env   # fill it in
+#   docker compose up -d --build
+#
+# The Zcash full node and wallet (Zebra + Zallet) are under the "zcash" profile:
+#   docker compose --profile zcash up -d
+# Zallet is in beta. Check the image tag and config against https://zcash.github.io/zallet/
+# before mainnet, and keep its RPC on this private network only.
+
+services:
+  postgres:
+    image: postgres:16-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: leeway
+      POSTGRES_USER: leeway
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U leeway -d leeway"]
+      interval: 5s
+      retries: 20
+
+  migrate:
+    build: { context: ., target: migrate }
+    environment:
+      DATABASE_URL: postgres://leeway:${POSTGRES_PASSWORD}@postgres:5432/leeway
+    depends_on: { postgres: { condition: service_healthy } }
+    restart: "no"
+
+  web:
+    build:
+      context: .
+      target: web
+      args:
+        NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID: ${NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID:-}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://leeway:${POSTGRES_PASSWORD}@postgres:5432/leeway
+    ports: ["127.0.0.1:3000:3000"] # put a TLS-terminating proxy (Caddy, nginx, a load balancer) in front
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  worker:
+    build: { context: ., target: worker }
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://leeway:${POSTGRES_PASSWORD}@postgres:5432/leeway
+    stop_grace_period: 75s # lets an in-flight send finish recording
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+  zebra:
+    profiles: [zcash]
+    image: ${ZEBRA_IMAGE:-zfnd/zebra:latest}
+    restart: unless-stopped
+    volumes: [zebra:/home/zebra/.cache/zebra]
+
+  zallet:
+    profiles: [zcash]
+    image: ${ZALLET_IMAGE:?set ZALLET_IMAGE to a pinned Zallet image}
+    restart: unless-stopped
+    volumes: [zallet:/home/zallet/.zallet, ./ops/zallet.toml:/etc/zallet/zallet.toml:ro]
+    depends_on: [zebra]
+
+volumes:
+  pgdata:
+  zebra:
+  zallet:

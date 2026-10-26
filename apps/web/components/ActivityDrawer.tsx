@@ -8,8 +8,9 @@ import { fmtAmount } from "./useTokens";
 
 export type Phase = "waiting" | "moving" | "shielded" | "settled" | "failed";
 
-export function phaseOf(data: { type: string; state?: string; status?: string } | null): { phase: Phase; label: string } {
+export function phaseOf(data: { type: string; state?: string; status?: string; review?: boolean } | null): { phase: Phase; label: string } {
   if (!data) return { phase: "waiting", label: "Checking" };
+  if (data.review) return { phase: "waiting", label: "Being checked" };
   if (data.type === "ghost") {
     switch (data.state) {
       case "awaiting_deposit":
@@ -68,10 +69,10 @@ function Row({ item }: { item: ActivityItem }) {
         </span>
         <span className="act-row__text">
           <strong>
-            {fmtAmount(item.amount)} {item.fromSymbol} → {item.toSymbol}
+            {fmtAmount(item.amount)} {item.fromSymbol} to {item.toSymbol}
           </strong>
           <span>
-            {item.kind === "ghost" ? "Ghost Send" : "Swap"} · {chainName(item.fromChain)} to {chainName(item.toChain)}
+            {item.kind === "ghost" ? "Ghost Send" : "Swap"}, {chainName(item.fromChain)} to {chainName(item.toChain)}
           </span>
         </span>
         <span className={`pill pill--${phase}`}>{label}</span>

@@ -103,3 +103,45 @@ select
   (select count(*) from dca_plans where active) as active_dca_plans,
   (select coalesce(sum(total_zat), 0) from cashback_payouts) as cashback_paid_zat,
   (select coalesce(sum(zat), 0) from cashback_entries where status = 'pending') as cashback_pending_zat;
+
+-- ============================================================ v2: mainnet hardening (additive, idempotent)
+
+-- Cashback payouts are reserved before the wallet sends, so a crash can never pay twice.
+alter table cashback_payouts add column if not exists status text not null default 'sent';
+alter table cashback_payouts alter column txid drop not null;
+alter table cashback_payouts add column if not exists error text;
+alter table cashback_entries drop constraint if exists cashback_entries_status_check;
+alter table cashback_entries add constraint cashback_entries_status_check check (status in ('pending', 'reserved', 'paid'));
+
+-- Shielding is marked before the wallet call, so a crash mid-shield is detected on restart.
+alter table ghost_transfers add column if not exists shield_started_at timestamptz;
+alter table ghost_transfers add column if not exists needs_review boolean not null default false;
+
+-- Liveness of each worker job, for /api/health and alerting.
+create table if not exists worker_heartbeats (
+  job        text primary key,
+  ok_at      timestamptz,
+  error_at   timestamptz,
+  last_error text
+);
+
+-- Fixed-window rate limits shared by every web instance.
+create table if not exists rate_limits (
+  key          text not null,
+  window_start timestamptz not null,
+  count        integer not null default 0,
+  primary key (key, window_start)
+);
+
+create index if not exists swaps_parent_idx on swaps (parent_id);
+create index if not exists ghost_created_idx on ghost_transfers (created_at);
+
+-- Stats count only payouts that actually went out.
+create or replace view leeway_stats as
+select
+  (select coalesce(sum(nullif(amount_in_usd, '')::numeric), 0) from swaps where status = 'SUCCESS' and kind <> 'ghost_leg2') as volume_usd,
+  (select count(*) from swaps where status = 'SUCCESS' and kind in ('swap', 'ghost_leg1', 'dca')) as completed_swaps,
+  (select count(*) from ghost_transfers where state = 'completed') as ghost_sends,
+  (select count(*) from dca_plans where active) as active_dca_plans,
+  (select coalesce(sum(total_zat), 0) from cashback_payouts where status = 'sent') as cashback_paid_zat,
+  (select coalesce(sum(zat), 0) from cashback_entries where status in ('pending', 'reserved')) as cashback_pending_zat;

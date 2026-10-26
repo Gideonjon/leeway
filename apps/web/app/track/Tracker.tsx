@@ -12,6 +12,7 @@ interface Data {
   amountInUsd: string | null;
   releaseAt?: string | null;
   purged?: boolean;
+  review?: boolean;
   error?: string | null;
 }
 
@@ -85,7 +86,9 @@ export function Tracker() {
             <span className={`pill pill--${phase}`}>{label}</span>
             {data.amountInUsd && <span className="deposit__timer">{fmtUsd(Number(data.amountInUsd))}</span>}
           </div>
-          {data.type === "ghost" && phase !== "failed" ? (
+          {data.review ? (
+            <p className="note">Paused for a manual check before anything else moves. Your funds are safe in the Leeway wallet.</p>
+          ) : data.type === "ghost" && phase !== "failed" ? (
             <ol className="psteps">
               {GHOST_STEPS.map((s, i) => (
                 <li key={s.title} className={`pstep pstep--${i < idx ? "done" : i === idx ? "now" : "todo"} ${s.shielded ? "pstep--shielded" : ""}`}>

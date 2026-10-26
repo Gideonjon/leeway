@@ -1,15 +1,20 @@
 import { isShieldedZcashAddress, leewayDcaAbi, zecRecipientHash } from "@leeway/core";
 import { createPublicClient, decodeEventLog, http, isAddress, isHash } from "viem";
 import { base } from "viem/chains";
-import { errorMessage, fail, json, services } from "@/lib/server";
+import { errorMessage, fail, guard, json, screen, services } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
 
 /** Plans owned by a Base address. */
 export async function GET(req: Request) {
+  const blocked = await guard(req, "dca-list", { perMin: 60 });
+  if (blocked) return blocked;
   const owner = new URL(req.url).searchParams.get("owner") ?? "";
   if (!isAddress(owner)) return fail("Connect a wallet to see your plans.");
-  return json(await services().db.dcaPlansByOwner(owner));
+  // Never return the Zcash address: anyone can query any EVM address, and pairing the two
+  // would publish the very link the user is hiding. The plan's on-chain data is public anyway.
+  const plans = await services().db.dcaPlansByOwner(owner);
+  return json(plans.map(({ zecAddress: _hidden, ...p }) => p));
 }
 
 /**
@@ -18,6 +23,8 @@ export async function GET(req: Request) {
  * must hash to the commitment stored on-chain.
  */
 export async function POST(req: Request) {
+  const blocked = await guard(req, "dca", { perMin: 10 });
+  if (blocked) return blocked;
   const { cfg, db } = services();
   if (!cfg.dcaContract) return fail("DCA isn't configured on this deployment yet.", 503);
   const body = (await req.json().catch(() => ({}))) as { txHash?: string; zecAddress?: string };
@@ -43,6 +50,8 @@ export async function POST(req: Request) {
     const p = await pub.readContract({ address: cfg.dcaContract, abi: leewayDcaAbi, functionName: "plans", args: [planId] });
     const [owner, , amountPerPeriod, interval, periodsTotal, , , active, hash] = p;
     if (hash !== zecRecipientHash(zec)) return fail("That Zcash address doesn't match the one committed in the plan.");
+    const screened = await screen([owner]);
+    if (screened) return screened;
 
     await db.upsertDcaPlan({
       planId: Number(planId),

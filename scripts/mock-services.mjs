@@ -28,7 +28,7 @@ const TOKENS = [
 ];
 
 const swaps = new Map(); // depositAddress -> { status, req, amountInUsd }
-const wallet = { taddrBalances: new Map(), txs: new Map(), sends: [], ops: new Map() };
+const wallet = { taddrBalances: new Map(), txs: new Map(), sends: [], ops: new Map(), failNext: null };
 
 const body = (req) => new Promise((r) => { let s = ""; req.on("data", (c) => (s += c)); req.on("end", () => r(s ? JSON.parse(s) : {})); });
 const send = (res, code, obj) => { res.writeHead(code, { "content-type": "application/json" }); res.end(JSON.stringify(obj)); };
@@ -88,6 +88,11 @@ const zec = (zat) => Number(zat) / 1e8;
 http.createServer(async (req, res) => {
   const { method, params, id } = await body(req);
   const ok = (result) => send(res, 200, { result, error: null, id });
+  // A real node answers bad params with an error, not a crash. Mimic that.
+  const needs = { z_listunifiedreceivers: 1, listunspent: 3, z_sendmany: 2, z_getoperationstatus: 1, gettransaction: 1, z_getaddressforaccount: 1 };
+  if (needs[method] && (!Array.isArray(params) || params.length < needs[method])) {
+    return send(res, 200, { result: null, error: { code: -8, message: "Invalid parameters" }, id });
+  }
   const opid = () => { const o = `opid-${hex(6)}`; const txid = hex(32); wallet.txs.set(txid, 0); wallet.ops.set(o, txid); return [o, txid]; };
   switch (method) {
     case "z_getaddressforaccount": return ok({ address: params[1]?.[0] === "p2pkh" ? `u1t${hex(8)}` : `u1${"q".repeat(120)}` });
@@ -96,7 +101,10 @@ http.createServer(async (req, res) => {
       const bal = wallet.taddrBalances.get(params[2][0]) ?? 0n;
       return ok(bal > 0n ? [{ address: params[2][0], amount: zec(bal) }] : []);
     }
+    case "control_fail_next_send": wallet.failNext = params[0] ?? "refuse"; return ok(true);
     case "z_sendmany": {
+      if (wallet.failNext === "refuse") { wallet.failNext = null; return send(res, 200, { result: null, error: { code: -6, message: "Insufficient funds" }, id }); }
+      if (wallet.failNext === "unknown") { wallet.failNext = null; res.writeHead(502); return res.end("bad gateway"); }
       const [o, txid] = opid();
       wallet.sends.push({ from: params[0], amounts: params[1], policy: params[4], txid });
       if (params[0].startsWith("t1")) wallet.taddrBalances.set(params[0], 0n);

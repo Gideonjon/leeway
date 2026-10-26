@@ -109,7 +109,7 @@ export function SendApp({ mode }: { mode: Mode }) {
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [started, setStarted] = useState<Started | null>(null);
-  const [live, setLive] = useState<{ type: string; state?: string; status?: string; releaseAt?: string | null } | null>(null);
+  const [live, setLive] = useState<{ type: string; state?: string; status?: string; releaseAt?: string | null; review?: boolean } | null>(null);
   const [paidTx, setPaidTx] = useState<string | null>(null);
   const [walletOpen, setWalletOpen] = useState(false);
 
@@ -200,8 +200,16 @@ export function SendApp({ mode }: { mode: Mode }) {
             ? mode === "ghost"
               ? "Add their address"
               : "Add your receiving address"
-            : !refundTo.trim()
-              ? "Add a refund address"
+            : recipientHint
+              ? mode === "ghost"
+                ? "Check their address"
+                : "Check your receiving address"
+              : !refundTo.trim()
+                ? "Add a refund address"
+                : refundHint
+                  ? "Check your refund address"
+                  : !cashbackValid
+                    ? "Check your cashback address"
               : mode === "ghost"
                 ? "Send privately"
                 : "Swap";
@@ -396,8 +404,8 @@ export function SendApp({ mode }: { mode: Mode }) {
                 </button>
                 <span className="opt__label">
                   Cashback <b>{config ? `${(config.cashbackBps / 100).toFixed(2)}%` : "0.20%"}</b>
-                  {preview && cashOn && <em> · +{fmtUsd(preview.cashbackUsd)}</em>}
                 </span>
+                {preview && cashOn && <span className="opt__value">+{fmtUsd(preview.cashbackUsd)}</span>}
                 {cashOn && (
                   <input
                     className="opt__input"
@@ -473,6 +481,11 @@ export function SendApp({ mode }: { mode: Mode }) {
                 </div>
                 <p className="hint">Anything sent after the timer runs out is refunded to {shortAddr(refundTo, 6, 4)}.</p>
               </>
+            ) : live?.review ? (
+              <p className="note">
+                Leeway paused this transfer to check it by hand before anything else moves. Your funds are safe in the Leeway wallet. Keep your tracking code; the team
+                resolves these within a day.
+              </p>
             ) : livePhase.phase === "failed" ? (
               <p className="note note--error">{live?.state === "refunded" || live?.status === "REFUNDED" ? "The route was refunded to your address. Nothing was lost." : "This transfer stopped. Contact support with your tracking code."}</p>
             ) : livePhase.phase === "settled" ? (

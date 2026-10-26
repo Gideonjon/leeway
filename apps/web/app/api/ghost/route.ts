@@ -5,10 +5,11 @@ import {
   isShieldedZcashAddress,
   makeTrackingCode,
   toBaseUnits,
+  validateAddress,
   validateGhostRequest,
   ZEC_ASSET_ID,
 } from "@leeway/core";
-import { errorMessage, fail, json, services, tokens } from "@/lib/server";
+import { errorMessage, fail, guard, json, screen, services, tokens } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
 
@@ -23,6 +24,8 @@ interface Body {
 
 /** Starts a Ghost Send: leg 1 is quoted into a fresh hop address in the Leeway wallet. */
 export async function POST(req: Request) {
+  const blocked = await guard(req, "ghost", { perMin: 6 });
+  if (blocked) return blocked;
   const { cfg, db, oneclick, wallet } = services();
   let body: Body;
   try {
@@ -35,9 +38,17 @@ export async function POST(req: Request) {
   const origin = findToken(list, body.originAsset);
   if (!origin) return fail("Pick an asset to send.");
   if (!findToken(list, body.destinationAsset)) return fail("Pick an asset to receive.");
+  const dest = findToken(list, body.destinationAsset)!;
   if (body.destinationAsset === ZEC_ASSET_ID) {
     return fail("To receive ZEC, use Swap and paste a shielded address: it's already private on arrival.");
   }
+  if (origin.blockchain === "zec") {
+    return fail("Sending from shielded ZEC is already private. Use Swap instead: it's faster and costs less.");
+  }
+  const recipientErr = validateAddress(dest.blockchain, body.recipient ?? "");
+  if (recipientErr) return fail(`Recipient: ${recipientErr}`);
+  const refundErr = validateAddress(origin.blockchain, body.refundTo ?? "");
+  if (refundErr) return fail(`Refund address: ${refundErr}`);
 
   let amount: string;
   try {
@@ -58,6 +69,12 @@ export async function POST(req: Request) {
   if (cashback && !isShieldedZcashAddress(cashback)) {
     return fail("Cashback goes to a shielded Zcash address: one starting with u1 or zs1.");
   }
+  if (cfg.ghostDailyCapUsd > 0) {
+    const used = await db.ghostVolumeSince(new Date(Date.now() - 86_400_000)).catch(() => Infinity);
+    if (used + amountUsd > cfg.ghostDailyCapUsd) return fail("Ghost Send has reached today's limit. Try a smaller amount or come back tomorrow.", 429);
+  }
+  const screened = await screen([body.recipient, body.refundTo]);
+  if (screened) return screened;
 
   try {
     const hop = await wallet.newTransparentAddress();

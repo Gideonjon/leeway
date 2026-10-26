@@ -1,5 +1,5 @@
-import { buildQuoteRequest, findToken, isShieldedZcashAddress, toBaseUnits } from "@leeway/core";
-import { errorMessage, fail, json, services, tokens } from "@/lib/server";
+import { buildQuoteRequest, findToken, isShieldedZcashAddress, toBaseUnits, validateAddress } from "@leeway/core";
+import { errorMessage, fail, guard, json, screen, services, tokens } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
 
@@ -18,6 +18,10 @@ interface Body {
  * recorded, and its deposit address returned for the user to pay into.
  */
 export async function POST(req: Request) {
+  // Price previews refresh as people type, so they get a looser limit than real quotes.
+  const isDry = req.headers.get("x-leeway-dry") === "1";
+  const blocked = await guard(req, isDry ? "preview" : "quote", { perMin: isDry ? 120 : 10 });
+  if (blocked) return blocked;
   const { cfg, db, oneclick } = services();
   let body: Body;
   try {
@@ -39,9 +43,17 @@ export async function POST(req: Request) {
   if (amount === "0") return fail("Enter an amount above zero.");
 
   const dry = body.dry !== false;
+  // The looser preview limit only ever applies to previews.
+  if (isDry !== dry) return fail("Mismatched preview flag.");
   if (!dry) {
     if (!body.recipient?.trim()) return fail("Add the address that receives the funds.");
     if (!body.refundTo?.trim()) return fail("Add a refund address on the chain you're sending from.");
+    const recipientErr = validateAddress(findToken(list, body.destinationAsset)!.blockchain, body.recipient);
+    if (recipientErr) return fail(`Receiving address: ${recipientErr}`);
+    const refundErr = validateAddress(origin.blockchain, body.refundTo);
+    if (refundErr) return fail(`Refund address: ${refundErr}`);
+    const screened = await screen([body.recipient, body.refundTo]);
+    if (screened) return screened;
     if (body.cashbackAddress && !isShieldedZcashAddress(body.cashbackAddress)) {
       return fail("Cashback goes to a shielded Zcash address: one starting with u1 or zs1.");
     }

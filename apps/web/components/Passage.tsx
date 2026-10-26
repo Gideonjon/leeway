@@ -15,6 +15,14 @@ export interface Preview {
 
 type StepState = "todo" | "now" | "done";
 
+function liveTitle(step: number | undefined, mode: "ghost" | "swap") {
+  if (step === undefined) return mode === "ghost" ? "The passage" : "Route";
+  const last = mode === "ghost" ? 5 : 3;
+  if (step >= last) return "Delivered";
+  if (step === 0) return "Waiting for your deposit";
+  return "On its way";
+}
+
 function Step(props: { state: StepState; shielded?: boolean; title: string; detail: React.ReactNode; aside?: React.ReactNode; icon: React.ReactNode }) {
   return (
     <li className={`pstep pstep--${props.state} ${props.shielded ? "pstep--shielded" : ""}`}>
@@ -73,15 +81,16 @@ export function PassagePanel(props: {
   return (
     <section className="passage-panel" aria-label="Route">
       <header className="passage-panel__head">
-        <h2>{phase ? "On its way" : mode === "ghost" ? "The passage" : "Route"}</h2>
-        <span className="tag">{mode === "ghost" ? "via shielded ZEC" : "via NEAR Intents"}</span>
+        <h2>{liveTitle(props.liveStep, mode)}</h2>
+        <p>{mode === "ghost" ? "Routed through shielded ZEC, so no one can link the two sides." : "Filled by NEAR Intents solvers at the best price they offer."}</p>
       </header>
       <ol className="psteps">
         <Step
           state={st("deposit")}
           icon={<TokenIcon symbol={from.symbol} chain={from.blockchain} size={34} />}
           title={`You send ${fmtAmount(preview.amountIn)} ${from.symbol}`}
-          detail={`on ${chainName(from.blockchain)} · ${fmtUsd(inUsd)}`}
+          detail={`on ${chainName(from.blockchain)}`}
+          aside={fmtUsd(inUsd)}
         />
         {mode === "ghost" ? (
           <>
@@ -89,7 +98,8 @@ export function PassagePanel(props: {
               state={st("leg1")}
               icon={<TokenIcon symbol={zec.symbol} chain={zec.chain} size={34} />}
               title="Leg one: into ZEC"
-              detail={`NEAR Intents solvers compete for the fill · ~${legMin} min`}
+              detail="Solvers on NEAR Intents compete to fill it."
+              aside={`~${legMin} min`}
             />
             <Step
               state={st("hold")}
@@ -106,31 +116,33 @@ export function PassagePanel(props: {
               state={st("leg2")}
               icon={<TokenIcon symbol={zec.symbol} chain={zec.chain} size={34} />}
               title={`Leg two: out to ${to.symbol}`}
-              detail={`From a fresh address, nothing ties it to leg one · ~${legMin} min`}
+              detail="Leaves from a fresh address with no trail back to leg one."
+              aside={`~${legMin} min`}
             />
           </>
         ) : (
-          <Step state={st("swap")} icon={<ShieldGlyph />} title="Swap" detail={`NEAR Intents solvers compete for the fill · ~${legMin} min`} />
+          <Step state={st("swap")} icon={<ShieldGlyph />} title="Swap" detail="Solvers on NEAR Intents compete to fill it." aside={`~${legMin} min`} />
         )}
         <Step
           state={st("arrive")}
           icon={<TokenIcon symbol={to.symbol} chain={to.blockchain} size={34} />}
           title={`${mode === "ghost" ? "They get" : "You get"} ${fmtAmount(preview.amountOut)} ${to.symbol}`}
-          detail={`on ${chainName(to.blockchain)} · ${fmtUsd(outUsd)}`}
+          detail={`on ${chainName(to.blockchain)}`}
+          aside={fmtUsd(outUsd)}
         />
       </ol>
 
       <dl className="costs">
         <div>
-          <dt>Leeway fee</dt>
-          <dd>{config ? `${(config.appFeeBps / 100).toFixed(2)}% · ${fmtUsd(feeUsd)}` : "—"}</dd>
+          <dt>Leeway fee{config ? ` (${(config.appFeeBps / 100).toFixed(2)}%)` : ""}</dt>
+          <dd>{fmtUsd(feeUsd)}</dd>
         </div>
         <div>
-          <dt>Route and network</dt>
+          <dt>Route and network costs</dt>
           <dd>{fmtUsd(routeUsd)}</dd>
         </div>
         <div className="costs__back">
-          <dt>Cashback in shielded ZEC</dt>
+          <dt>Back to you in shielded ZEC</dt>
           <dd>+{fmtUsd(preview.cashbackUsd)}</dd>
         </div>
         <div>

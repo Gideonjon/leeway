@@ -78,9 +78,19 @@ awaiting_deposit → (leg 1 settles, ZEC on a fresh t-address) → shielding →
 - A custodial hop that breaks on-chain links can look like a mixer to regulators. Sends are capped (`LEEWAY_GHOST_MAX_USD`). Get legal advice before scaling.
 - DCA puts only `keccak256(zcashAddress)` on-chain. The keeper supplies the 1Click deposit address, so v1 trusts Leeway's keeper; the per-period cap limits exposure to one period.
 
+## Production
+
+- **Deploy:** `docker compose up -d --build` runs Postgres, migrations, web and worker. See `docs/RUNBOOK.md` for the full launch checklist.
+- **Safety:** one worker at a time (Postgres advisory lock); payouts are reserved before sending, so a crash can't pay twice; any send whose outcome is unknown stops for review instead of retrying; the worker refuses to start if the wallet lacks an RPC method it needs.
+- **Privacy:** fonts and token icons are self-hosted, so no third party sees visits; 24 hours after delivery, everything that links a Ghost Send's two legs is erased, including the stored quotes; the DCA API never returns a user's Zcash address; IPs are hashed before rate limiting.
+- **Abuse limits:** per-IP rate limits across all instances, a per-send and a daily Ghost Send cap, optional sanctions screening, request size caps, strict security headers.
+- **Health:** `GET /api/health` reports database, route provider, worker jobs and the review queue, and returns 503 when something needs you.
+- **Tests:** `npm test` (35 unit tests), `forge test` (11 contract tests), `scripts/e2e-ghost.sh`, `scripts/e2e-safety.sh`, `scripts/e2e-wallets.cjs`. CI runs them on every push.
+
 ## Before mainnet
 
 - Audit `LeewayDCA.sol`.
 - Confirm Zallet RPC method support for `z_getaddressforaccount` receiver types and `z_sendmany` privacy policies on your version; the wallet sits behind the `ShieldedWallet` interface if you need another backend.
 - Confirm the 1Click status values and fee behaviour on a small real swap.
 - Next.js is pinned to 15.5.27 (patched). Keep it updated.
+- Work through `docs/RUNBOOK.md` top to bottom.

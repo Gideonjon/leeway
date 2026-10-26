@@ -103,15 +103,32 @@ export class OneClickClient {
     private readonly fetchImpl: FetchLike = fetch,
   ) {}
 
-  private async request<T>(method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+  private async request<T>(method: "GET" | "POST", path: string, body?: unknown, attempt = 0): Promise<T> {
     const headers: Record<string, string> = { accept: "application/json" };
     if (body !== undefined) headers["content-type"] = "application/json";
     if (this.apiKey) headers["X-API-Key"] = this.apiKey;
-    const res = await this.fetchImpl(`${this.baseUrl.replace(/\/$/, "")}${path}`, {
-      method,
-      headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
-    });
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 20_000);
+    let res: Response;
+    try {
+      res = await this.fetchImpl(`${this.baseUrl.replace(/\/$/, "")}${path}`, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+        signal: ctrl.signal,
+      });
+    } catch (e) {
+      // Network error or timeout. Reads are safe to retry; a quote is too (it only reserves an address).
+      if (attempt < 2) return this.request(method, path, body, attempt + 1);
+      throw new OneClickError(`1Click ${method} ${path} failed: unreachable (${String(e)})`, 503, null);
+    } finally {
+      clearTimeout(timer);
+    }
+    if ((res.status === 429 || res.status >= 500) && attempt < 2) {
+      const wait = Number(res.headers.get("retry-after")) * 1000 || 500 * 2 ** attempt;
+      await new Promise((r) => setTimeout(r, Math.min(wait, 5_000)));
+      return this.request(method, path, body, attempt + 1);
+    }
     const text = await res.text();
     const parsed = text ? safeJson(text) : undefined;
     if (!res.ok) {

@@ -1,0 +1,9 @@
+# Starting point for Zallet. Zallet is in beta and its config keys can change between
+# releases: confirm every key against the docs for the exact version you pin
+# (https://zcash.github.io/zallet/). The worker refuses to start if the wallet lacks
+# any RPC method Leeway needs, so a mismatch fails safe.
+#
+# What Leeway needs from the wallet:
+#   - JSON-RPC reachable only from the worker and web containers, with a strong password
+#   - one account (ZCASH_ACCOUNT, default 0) holding the Ghost Send float and the cashback float
+#   - connected to a fully synced Zebra node on mainnet

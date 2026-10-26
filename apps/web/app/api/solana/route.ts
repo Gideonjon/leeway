@@ -1,4 +1,4 @@
-import { fail } from "@/lib/server";
+import { fail, guard } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
 
@@ -6,6 +6,8 @@ export const dynamic = "force-dynamic";
 const ALLOWED = new Set(["getLatestBlockhash", "getAccountInfo"]);
 
 export async function POST(req: Request) {
+  const blocked = await guard(req, "solana", { perMin: 60 });
+  if (blocked) return blocked;
   const body = (await req.json().catch(() => ({}))) as { method?: string; params?: unknown[] };
   if (!body.method || !ALLOWED.has(body.method)) return fail("Method not allowed.", 403);
   const url = process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com";

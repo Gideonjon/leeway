@@ -1,4 +1,4 @@
-import { errorMessage, fail, json, services } from "@/lib/server";
+import { errorMessage, fail, guard, json, services } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
 
@@ -6,7 +6,9 @@ export const dynamic = "force-dynamic";
  * Public status of a Ghost Send by tracking code, or of a swap by deposit address.
  * Never returns the recipient, refund address or hop address.
  */
-export async function GET(_req: Request, { params }: { params: Promise<{ code: string }> }) {
+export async function GET(req: Request, { params }: { params: Promise<{ code: string }> }) {
+  const blocked = await guard(req, "track", { perMin: 60 });
+  if (blocked) return blocked;
   const { code } = await params;
   const { db } = services();
   try {
@@ -23,6 +25,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ code: s
         createdAt: g.createdAt,
         completedAt: g.completedAt,
         purged: Boolean(g.purgedAt),
+        review: g.needsReview,
         error: g.error,
       });
     }

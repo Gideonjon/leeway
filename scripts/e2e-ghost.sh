@@ -7,22 +7,25 @@ MOCK=http://localhost:4010
 RPC=http://localhost:4020
 USDC=nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near
 SOL=nep141:sol.omft.near
+SOLADDR=7xKXtg2CW87d97TXJSDpbD5jBkheTqA83TZRuJosgAsU
 CB="u1$(printf 'c%.0s' {1..120})"
 worker() { (cd "$(dirname "$0")/../apps/worker" && npx tsx src/index.ts --once >/dev/null); }
 rpc() { curl -s $RPC -d "{\"method\":\"$1\",\"params\":[]}" >/dev/null; }
 state() { curl -s "$API/api/track/$CODE" | node -pe 'JSON.parse(require("fs").readFileSync(0)).state'; }
 
 echo "1. dry quote"
-curl -s -X POST $API/api/quote -H 'content-type: application/json' \
+curl -s -X POST $API/api/quote -H 'content-type: application/json' -H 'x-leeway-dry: 1' \
   -d "{\"originAsset\":\"$USDC\",\"destinationAsset\":\"$SOL\",\"amount\":\"250\",\"dry\":true}"; echo
 
-echo "2. rejects a cashback address equal to the recipient"
+echo "2. rejects bad input"
 curl -s -X POST $API/api/ghost -H 'content-type: application/json' \
-  -d "{\"originAsset\":\"$USDC\",\"destinationAsset\":\"$SOL\",\"amount\":\"250\",\"recipient\":\"$CB\",\"refundTo\":\"0xabc\",\"cashbackAddress\":\"$CB\"}"; echo
+  -d "{\"originAsset\":\"$USDC\",\"destinationAsset\":\"$SOL\",\"amount\":\"250\",\"recipient\":\"0x2527D02599Ba641c19FEa793cD0F167589a0f10D\",\"refundTo\":\"0x2527D02599Ba641c19FEa793cD0F167589a0f10D\"}"; echo
+curl -s -X POST $API/api/ghost -H 'content-type: application/json' \
+  -d "{\"originAsset\":\"$USDC\",\"destinationAsset\":\"$SOL\",\"amount\":\"250\",\"recipient\":\"$SOLADDR\",\"refundTo\":\"0x2527D02599Ba641c19FEa793cD0F167589a0f10D\",\"cashbackAddress\":\"$SOLADDR\"}"; echo
 
 echo "3. start ghost send"
 START=$(curl -s -X POST $API/api/ghost -H 'content-type: application/json' \
-  -d "{\"originAsset\":\"$USDC\",\"destinationAsset\":\"$SOL\",\"amount\":\"250\",\"recipient\":\"SoLRecipient111\",\"refundTo\":\"0x2527D02599Ba641c19FEa793cD0F167589a0f10D\",\"cashbackAddress\":\"$CB\"}")
+  -d "{\"originAsset\":\"$USDC\",\"destinationAsset\":\"$SOL\",\"amount\":\"250\",\"recipient\":\"$SOLADDR\",\"refundTo\":\"0x2527D02599Ba641c19FEa793cD0F167589a0f10D\",\"cashbackAddress\":\"$CB\"}")
 echo "$START"
 CODE=$(echo "$START" | node -pe 'JSON.parse(require("fs").readFileSync(0)).code')
 DEP=$(echo "$START" | node -pe 'JSON.parse(require("fs").readFileSync(0)).depositAddress')
@@ -47,9 +50,15 @@ psql "$DATABASE_URL" -tAc "select source, zat, status from cashback_entries"
 psql "$DATABASE_URL" -tAc "select recipients, total_zat from cashback_payouts"
 
 echo "7. purge after window"
+GID=$(psql "$DATABASE_URL" -tAc "select id from ghost_transfers where code = '$CODE'")
+HOP=$(psql "$DATABASE_URL" -tAc "select hop_transparent_address from ghost_transfers where code = '$CODE'")
 psql "$DATABASE_URL" -qc "update ghost_transfers set completed_at = now() - interval '2 days' where code = '$CODE'"
 worker
 psql "$DATABASE_URL" -tAc "select state, recipient is null, refund_to is null, hop_transparent_address is null, purged_at is not null from ghost_transfers where code = '$CODE'"
+LEFT=$(psql "$DATABASE_URL" -tAc "select count(*) from swaps where quote::text like '%$HOP%' or quote::text like '%$SOLADDR%' or deposit_address not like 'purged:%' and parent_id = '$GID'")
+LEGS=$(psql "$DATABASE_URL" -tAc "select count(*) from swaps where parent_id = '$GID'")
+echo "   legs linked to this send: $LEGS, rows still naming the hop or recipient: $LEFT"
+[ "$LEFT" = "0" ] && echo "   scrub OK" || { echo "   SCRUB FAILED"; exit 1; }
 
 echo "8. wallet sends"
 curl -s $RPC -d '{"method":"control_sends","params":[]}' | node -pe 'JSON.parse(require("fs").readFileSync(0)).result.map(s=>s.policy+" "+s.amounts.map(a=>a.address.slice(0,6)+":"+a.amount+(a.memo?" memo":"")).join(",")).join("\n")'

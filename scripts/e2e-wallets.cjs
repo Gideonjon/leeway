@@ -67,7 +67,8 @@ const anvil = async (method, params) =>
 
 (async () => {
   const b = await chromium.launch();
-  const ctx = await b.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "dark" });
+  // bypassCSP: the injected test wallets call anvil from page context; real wallet extensions run outside page CSP.
+  const ctx = await b.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: "dark", bypassCSP: true });
   const p = await ctx.newPage();
   p.on("pageerror", (e) => console.log("PAGE ERROR", e.message));
   await p.addInitScript(inject, { solAddr: SOL_ADDR });

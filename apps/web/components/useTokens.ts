@@ -64,7 +64,9 @@ export function useTokens() {
 }
 
 export async function postJson<T>(url: string, body: unknown): Promise<T> {
-  const res = await fetch(url, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if ((body as { dry?: boolean } | null)?.dry === true) headers["x-leeway-dry"] = "1";
+  const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
   const data = await res.json().catch(() => ({ error: "Unexpected response." }));
   if (!res.ok || data.error) throw new Error(data.error ?? `Request failed (${res.status})`);
   return data as T;

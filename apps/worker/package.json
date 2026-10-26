@@ -6,7 +6,9 @@
   "scripts": {
     "start": "tsx src/index.ts",
     "once": "tsx src/index.ts --once",
-    "typecheck": "tsc -p tsconfig.json --noEmit"
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "start:prod": "node dist/index.js"
   },
   "dependencies": {
     "@leeway/core": "0.1.0",

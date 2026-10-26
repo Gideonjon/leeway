@@ -124,8 +124,6 @@ function Backdrop() {
         <path className="arc arc--2" d="M80 1160 A980 980 0 0 1 1060 180" />
         <path className="arc arc--3" d="M280 1200 A780 780 0 0 1 1060 420" />
       </svg>
-      <div className="backdrop__glow backdrop__glow--lee" />
-      <div className="backdrop__glow backdrop__glow--lantern" />
     </div>
   );
 }
@@ -138,9 +136,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <Header />
         {children}
         <footer className="foot">
-          <span>
-            <Link href="/track">Track a transfer</Link> · <Link href="/stats">Numbers</Link> · <Link href="/privacy">Who can see what</Link>
-          </span>
+          <nav aria-label="More">
+            <Link href="/track">Track a transfer</Link>
+            <Link href="/stats">Numbers</Link>
+            <Link href="/privacy">Who can see what</Link>
+            <Link href="/terms">Terms</Link>
+          </nav>
           <span>Routed by NEAR Intents. Settled in shielded ZEC. Check every address before you send.</span>
         </footer>
       </div>

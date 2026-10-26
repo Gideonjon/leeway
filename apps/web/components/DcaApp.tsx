@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { createPublicClient, createWalletClient, custom, erc20Abi, http, keccak256, parseUnits, toBytes, type Address } from "viem";
+import { createPublicClient, createWalletClient, custom, erc20Abi, keccak256, parseUnits, toBytes, type Address } from "viem";
 import { base } from "viem/chains";
 import { shortAddr } from "@/lib/chains";
 import { TokenIcon } from "./TokenIcon";
@@ -34,7 +34,6 @@ const dcaAbi = [
 
 interface Plan {
   planId: number;
-  zecAddress: string;
   amountPerPeriod: string;
   intervalSec: number;
   periodsTotal: number;
@@ -91,7 +90,7 @@ export function DcaApp() {
     const provider = wallet.evm.provider;
     const account = wallet.evm.address;
     const w = createWalletClient({ chain: base, transport: custom(provider), account });
-    const pub = createPublicClient({ chain: base, transport: http() });
+    const pub = createPublicClient({ chain: base, transport: custom(provider) });
     try {
       await w.switchChain({ id: base.id }).catch(() => w.addChain({ chain: base }));
       const perUnits = parseUnits(amount, 6);
@@ -126,7 +125,7 @@ export function DcaApp() {
     try {
       setBusy(`Stopping plan ${id}…`);
       const w = createWalletClient({ chain: base, transport: custom(provider), account: wallet.address });
-      const pub = createPublicClient({ chain: base, transport: http() });
+      const pub = createPublicClient({ chain: base, transport: custom(provider) });
       const hash = await w.writeContract({ address: contract, abi: dcaAbi, functionName: "cancelPlan", args: [BigInt(id)] });
       await pub.waitForTransactionReceipt({ hash });
       setPlans((p) => p.map((x) => (x.planId === id ? { ...x, active: false } : x)));
@@ -229,7 +228,7 @@ export function DcaApp() {
       <section className="passage-panel" aria-label="How DCA works">
         <header className="passage-panel__head">
           <h2>{plans.length ? "Your plans" : "How each buy runs"}</h2>
-          <span className="tag">non-custodial</span>
+          <p>{plans.length ? "Stop any plan here, or revoke the USDC allowance in your wallet." : "Your USDC never sits with Leeway."}</p>
         </header>
         {plans.length ? (
           <ul className="plan-list">
@@ -241,7 +240,7 @@ export function DcaApp() {
                     {(Number(p.amountPerPeriod) / 1e6).toLocaleString()} USDC {FREQS.find((f) => f.sec === p.intervalSec)?.label.toLowerCase() ?? `every ${Math.round(p.intervalSec / 86_400)} days`}
                   </strong>
                   <span>
-                    {p.periodsTotal ? `${p.periodsTotal} buys` : "Until stopped"} · to {shortAddr(p.zecAddress, 6, 4)}
+                    {p.periodsTotal ? `${p.periodsTotal} buys, delivered shielded` : "Runs until you stop it"}
                   </span>
                 </div>
                 {p.active ? (
