@@ -27,15 +27,15 @@ interface EvmConn {
   name: string;
   icon: string;
   address: Address;
-  provider: EIP1193Provider;
+  provider?: EIP1193Provider;
 }
 interface SolConn {
   id: string;
   name: string;
   icon: string;
   address: string;
-  wallet: StdWallet;
-  account: WalletAccount;
+  wallet?: StdWallet;
+  account?: WalletAccount;
 }
 
 interface WalletState {
@@ -48,6 +48,7 @@ interface WalletState {
   wcUri: string | null;
   connectEvm: (o: EvmOption) => Promise<EvmConn | null>;
   connectSol: (o: SolOption) => Promise<SolConn | null>;
+  connectManual: (kind: "evm" | "sol", address: string, name?: string, icon?: string) => boolean;
   disconnect: (kind: "evm" | "sol") => void;
   /** Address the user controls on a 1Click chain code, if connected. */
   addressFor: (chain: string) => string | null;
@@ -61,7 +62,12 @@ interface WalletState {
 
 const Ctx = createContext<WalletState | null>(null);
 const WC_PROJECT_ID = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID ?? "";
-const LS = { evm: "leeway.wallet.evm", sol: "leeway.wallet.sol" };
+const LS = {
+  evm: "leeway.wallet.evm",
+  sol: "leeway.wallet.sol",
+  evmManual: "leeway.wallet.evm.manual",
+  solManual: "leeway.wallet.sol.manual",
+};
 const store = {
   get: (k: string) => {
     try {
@@ -135,17 +141,37 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     };
     window.addEventListener("eip6963:announceProvider", onAnnounce);
     window.dispatchEvent(new Event("eip6963:requestProvider"));
-    // Older wallets that only inject window.ethereum.
-    const t = setTimeout(() => {
-      const legacy = (window as unknown as { ethereum?: EIP1193Provider & { isMetaMask?: boolean } }).ethereum;
+    // Older or mobile in-app wallets that inject window.ethereum after load.
+    const checkLegacy = () => {
+      const win = window as unknown as {
+        ethereum?: EIP1193Provider & { isMetaMask?: boolean; isRabby?: boolean; isCoinbaseWallet?: boolean; isTrust?: boolean };
+        phantom?: { ethereum?: EIP1193Provider };
+      };
+      const legacy = win.ethereum ?? win.phantom?.ethereum;
       if (found.size === 0 && legacy) {
-        found.set("injected", { id: "injected", name: legacy.isMetaMask ? "MetaMask" : "Browser wallet", icon: "", provider: legacy });
+        const name = win.ethereum?.isRabby
+          ? "Rabby Wallet"
+          : win.ethereum?.isCoinbaseWallet
+            ? "Coinbase Wallet"
+            : win.ethereum?.isTrust
+              ? "Trust Wallet"
+              : win.ethereum?.isMetaMask
+                ? "MetaMask"
+                : win.phantom?.ethereum
+                  ? "Phantom"
+                  : "Browser wallet";
+        found.set("injected", { id: "injected", name, icon: "", provider: legacy });
         setEvmOptions([...found.values()]);
       }
-    }, 400);
+    };
+    const t1 = setTimeout(checkLegacy, 150);
+    const t2 = setTimeout(checkLegacy, 600);
+    const t3 = setTimeout(checkLegacy, 1400);
     return () => {
       window.removeEventListener("eip6963:announceProvider", onAnnounce);
-      clearTimeout(t);
+      clearTimeout(t1);
+      clearTimeout(t2);
+      clearTimeout(t3);
     };
   }, []);
 
@@ -171,11 +197,30 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     const conn = { id: o.id, name: o.name, icon: o.icon, address, provider };
     setEvm(conn);
     store.set(LS.evm, o.id);
+    store.set(LS.evmManual, null);
     provider.on?.("accountsChanged", (a: unknown) => {
       const next = (a as string[])[0] as Address | undefined;
       setEvm((cur) => (cur && cur.provider === provider ? (next ? { ...cur, address: next } : null) : cur));
     });
     return conn;
+  }, []);
+
+  const connectManual = useCallback((kind: "evm" | "sol", rawAddress: string, name?: string, icon = ""): boolean => {
+    const trimmed = rawAddress.trim();
+    if (kind === "evm") {
+      if (!/^0x[0-9a-fA-F]{40}$/.test(trimmed)) return false;
+      const wName = name ?? "EVM Wallet";
+      setEvm({ id: "manual", name: wName, icon, address: trimmed as Address });
+      store.set(LS.evmManual, JSON.stringify({ address: trimmed, name: wName, icon }));
+      store.set(LS.evm, null);
+      return true;
+    }
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(trimmed)) return false;
+    const wName = name ?? "Solana Wallet";
+    setSol({ id: "manual", name: wName, icon, address: trimmed });
+    store.set(LS.solManual, JSON.stringify({ address: trimmed, name: wName, icon }));
+    store.set(LS.sol, null);
+    return true;
   }, []);
 
   const connectWalletConnect = useCallback(async (): Promise<EvmConn | null> => {
@@ -202,10 +247,11 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const connectEvm = useCallback(
     async (o: EvmOption) => {
       if (o.id === "walletconnect") return connectWalletConnect();
-      if (!o.provider) return null;
-      const accounts = (await o.provider.request({ method: "eth_requestAccounts" })) as string[];
+      const provider = o.provider ?? (window as unknown as { ethereum?: EIP1193Provider }).ethereum;
+      if (!provider) return null;
+      const accounts = (await provider.request({ method: "eth_requestAccounts" })) as string[];
       const address = accounts[0] as Address | undefined;
-      return address ? attachEvm(o, o.provider, address) : null;
+      return address ? attachEvm(o, provider, address) : null;
     },
     [attachEvm, connectWalletConnect],
   );
@@ -218,11 +264,42 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     const conn = { id: o.id, name: o.name, icon: o.icon, address: account.address, wallet: o.wallet, account };
     setSol(conn);
     store.set(LS.sol, o.id);
+    store.set(LS.solManual, null);
     return conn;
   }, []);
 
-  // --- Restore last session silently, once wallets have announced themselves.
+  // --- Restore manual addresses immediately on mount.
   useEffect(() => {
+    const evmM = store.get(LS.evmManual);
+    if (evmM) {
+      try {
+        const parsed = JSON.parse(evmM) as { address: Address; name: string; icon?: string };
+        if (/^0x[0-9a-fA-F]{40}$/.test(parsed.address)) {
+          setEvm((cur) => cur ?? { id: "manual", name: parsed.name || "EVM Wallet", icon: parsed.icon || "", address: parsed.address });
+        }
+      } catch {}
+    }
+    const solM = store.get(LS.solManual);
+    if (solM) {
+      try {
+        const parsed = JSON.parse(solM) as { address: string; name: string; icon?: string };
+        if (/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(parsed.address)) {
+          setSol((cur) => cur ?? { id: "manual", name: parsed.name || "Solana Wallet", icon: parsed.icon || "", address: parsed.address });
+        }
+      } catch {}
+    }
+  }, []);
+
+  // --- Restore last session silently, or auto-connect when deep-linked into a wallet app.
+  useEffect(() => {
+    const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+    const auto = params?.get("autoconnect");
+    if (auto === "evm" && evmOptions.length > 0 && !evm) {
+      void connectEvm(evmOptions[0]).catch(() => undefined);
+    } else if (auto === "sol" && solOptions.length > 0 && !sol) {
+      void connectSol(solOptions[0]).catch(() => undefined);
+    }
+
     if (restored.current) return;
     const evmId = store.get(LS.evm);
     const solId = store.get(LS.sol);
@@ -240,7 +317,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         .catch(() => undefined);
     }
     if (s) void connectSol(s, true).catch(() => undefined);
-  }, [evmOptions, solOptions, attachEvm, connectSol]);
+  }, [evmOptions, solOptions, evm, sol, attachEvm, connectEvm, connectSol]);
 
   const disconnect = useCallback((kind: "evm" | "sol") => {
     if (kind === "evm") {
@@ -249,13 +326,15 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         return null;
       });
       store.set(LS.evm, null);
+      store.set(LS.evmManual, null);
     } else {
       setSol((cur) => {
-        const f = cur?.wallet.features["standard:disconnect"] as DisconnectFeature | undefined;
+        const f = cur?.wallet?.features["standard:disconnect"] as DisconnectFeature | undefined;
         void f?.disconnect().catch(() => undefined);
         return null;
       });
       store.set(LS.sol, null);
+      store.set(LS.solManual, null);
     }
   }, []);
 
@@ -263,12 +342,20 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     (chain: string) => (chain in EVM_CHAIN_IDS ? (evm?.address ?? null) : chain === "sol" ? (sol?.address ?? null) : null),
     [evm, sol],
   );
-  const canPay = useCallback((chain: string) => (chain in EVM_CHAIN_IDS ? evmOptions.length > 0 || Boolean(WC_PROJECT_ID) || Boolean(evm) : chain === "sol" ? solOptions.length > 0 || Boolean(sol) : false), [evmOptions, solOptions, evm, sol]);
+  const canPay = useCallback(
+    (chain: string) =>
+      chain in EVM_CHAIN_IDS
+        ? evmOptions.length > 0 || Boolean(WC_PROJECT_ID) || Boolean(evm?.provider)
+        : chain === "sol"
+          ? solOptions.length > 0 || Boolean(sol?.wallet)
+          : false,
+    [evmOptions, solOptions, evm, sol],
+  );
 
   const pay = useCallback<WalletState["pay"]>(
     async ({ chain, to, amount, decimals, contract }) => {
       if (chain === "sol") {
-        if (!sol) throw new Error("Connect a Solana wallet first.");
+        if (!sol?.wallet || !sol.account) throw new Error("Open in your Solana wallet app to sign this transfer.");
         const { base58, buildDepositTx } = await import("@/lib/solana");
         const tx = await buildDepositTx({ from: sol.address, to, amount: parseUnits(amount, decimals), mint: contract || undefined, decimals });
         const feat = sol.wallet.features["solana:signAndSendTransaction"] as SignAndSend;
@@ -277,7 +364,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       }
       const id = EVM_CHAIN_IDS[chain];
       if (!id) throw new Error("Pay from your wallet app for this chain.");
-      if (!evm) throw new Error("Connect an EVM wallet first.");
+      if (!evm?.provider) throw new Error("Open in your EVM wallet app to sign this transfer.");
       const w = createWalletClient({ chain: viemChain(id), transport: custom(evm.provider), account: evm.address });
       const current = Number(await evm.provider.request({ method: "eth_chainId" }));
       if (current !== id) {
@@ -315,6 +402,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       wcUri,
       connectEvm,
       connectSol: (o) => connectSol(o),
+      connectManual,
       disconnect,
       addressFor,
       canPay,
@@ -323,7 +411,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       available: evmOptions.length > 0,
       connect: legacyConnect,
     }),
-    [evm, sol, evmOptions, solOptions, wcUri, connectEvm, connectSol, disconnect, addressFor, canPay, pay, legacyConnect],
+    [evm, sol, evmOptions, solOptions, wcUri, connectEvm, connectSol, connectManual, disconnect, addressFor, canPay, pay, legacyConnect],
   );
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }

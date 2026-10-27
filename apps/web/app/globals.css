@@ -606,6 +606,16 @@ input { font: inherit; color: inherit; }
 .zchip span { font-size: 11.5px; color: var(--ink-faint); }
 .wc { display: grid; justify-items: center; gap: 12px; padding: 8px 4px 4px; text-align: center; }
 .qr--lg { width: min(240px, 72vw); height: min(240px, 72vw); padding: 14px; }
+.wprompt { display: grid; gap: 10px; padding: 12px; border-radius: 16px; background: var(--well); border: 1px solid var(--lee); }
+.wprompt__head { display: flex; align-items: center; gap: 10px; }
+.wprompt__title { display: grid; line-height: 1.25; min-width: 0; }
+.wprompt__title strong { font-size: 14px; }
+.wprompt__title span { font-size: 12px; color: var(--ink-muted); }
+.wprompt__app-btn { min-height: 42px; margin-top: 0; font-size: 14px; border-radius: 12px; }
+.wprompt__row { display: flex; align-items: center; gap: 8px; }
+.wprompt__input { flex: 1 1 0; width: 0; min-width: 0; height: 38px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line-strong); background: var(--surface); outline: none; font: 400 13px var(--font-mono); color: var(--ink); }
+.wprompt__input:focus { border-color: var(--lee); }
+.wprompt__input::placeholder { font-family: var(--font-sans); color: var(--ink-faint); }
 .prose h2 { margin: 10px 0 0; font-size: 15px; font-weight: 600; letter-spacing: -0.01em; }
 
 /* ================================================================ network switch & testnet banner */

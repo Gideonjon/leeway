@@ -127,7 +127,7 @@ export function DcaApp() {
     }
 
     if (!contract) return;
-    if (!wallet.evm) {
+    if (!wallet.evm?.provider) {
       setWalletOpen(true);
       return;
     }
