@@ -7,9 +7,12 @@ import { ZCASH_WALLETS } from "@/lib/payuri";
 import { ChainIcon } from "./TokenIcon";
 import { useWallet, type EvmOption, type SolOption } from "./Wallet";
 
-const svgUri = (svg: string) => `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+const svgUri = (svg: string) => `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 
 const WALLET_ICONS = {
+  walletconnect: svgUri(
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" rx="10" fill="#3B99FC"/><path d="M12.2 15.6c4.3-4.2 11.3-4.2 15.6 0l.5.5c.2.2.2.6 0 .8l-1.8 1.7a.3.3 0 0 1-.4 0l-.7-.7c-3-2.9-7.8-2.9-10.8 0l-.8.7a.3.3 0 0 1-.4 0l-1.8-1.7a.6.6 0 0 1 0-.8l.6-.5zm19.3 3.6 1.6 1.6c.2.2.2.6 0 .8l-7.2 7a.6.6 0 0 1-.8 0l-5.1-5a.1.1 0 0 0-.2 0l-5.1 5a.6.6 0 0 1-.8 0l-7.2-7a.6.6 0 0 1 0-.8l1.6-1.6a.6.6 0 0 1 .8 0l5.1 5c.1.1.2.1.2 0l5.1-5a.6.6 0 0 1 .8 0l5.1 5c.1.1.2.1.2 0l5.1-5a.6.6 0 0 1 .8 0z" fill="#fff"/></svg>`,
+  ),
   metamask: svgUri(
     `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 40 40"><rect width="40" height="40" rx="10" fill="#24292E"/><path d="M31.4 8 22 14.9l1.7-4.1L31.4 8z" fill="#E2761B"/><path d="M8.6 8 17.9 15l-1.6-4.2L8.6 8zm19.4 17.7-2.5 3.8 5.4 1.5 1.5-5.2-4.4-.1zm-20.4.1 1.5 5.2 5.4-1.5-2.5-3.8-4.4.1z" fill="#E4761B"/><path d="m14.2 17.4-1.5 2.3 5.3.2-.2-5.7-3.6 3.2zm11.6 0-3.7-3.3-.1 5.8 5.3-.2-1.5-2.3zM14.5 29.5l3.2-1.6-2.8-2.2-.4 3.8zm7.8-1.6 3.2 1.6-.4-3.8-2.8 2.2z" fill="#E4761B"/><path d="m25.5 29.5-3.2-1.6.3 2.1-.1.9 3-1.4zm-11 0 3 1.4-.1-.9.3-2.1-3.2 1.6z" fill="#D7C1B3"/><path d="m17.6 23.7-2.7-.8 1.9-.9.8 1.7zm4.8 0 .8-1.7 1.9.9-2.7.8z" fill="#233447"/><path d="m14.5 29.5.5-3.8-3 .1 2.5 3.7zm10.5-3.8.5 3.8 2.5-3.7-3-.1zm2.3-6-5.3.2.5 2.8.8-1.7 1.9.9 2.1-2.2zm-12.4 1.3 1.9-.9.8 1.7.5-2.8-5.3-.2 2.1 2.2z" fill="#CD6116"/><path d="m12.7 19.7 2.2 4.3-.1-2.1-2.1-2.2zm12.5 2.2-.1 2.1 2.2-4.3-2.1 2.2zm-7.2-2 .1 2.8.6 3.2.2-4.2-.9-1.8zm4 0-.9 1.8.1 4.2.7-3.2.1-2.8z" fill="#E4751F"/><path d="m22.1 22.7-.7 3.2.5.3 2.8-2.2.1-2.1-2.7.8zm-7.2-.8.1 2.1 2.8 2.2.5-.3-.7-3.2-2.7-.8z" fill="#F6851B"/><path d="m22.2 30.9.1-.9-.3-.2h-4l-.2.2.1.9-3-1.4 1 .9 2.1 1.5h4.1l2.1-1.5 1-.9-3 1.4z" fill="#C0AD9E"/><path d="m22.3 27.9-.5-.3h-3.6l-.5.3-.3 2.1.2-.2h4l.3.2-.3-2.1z" fill="#161616"/><path d="m32 15.6.8-3.9L31.4 8l-9.1 6.7 3.5 3 5 1.4 1.1-1.3-.5-.3.8-.7-.6-.5.8-.6-.4-.1zM7.2 11.7l.8 3.9-.5.1.8.6-.6.5.8.7-.5.3 1.1 1.3 5-1.4 3.5-3L8.6 8l-1.4 3.7z" fill="#763D16"/><path d="m30.8 19.1-5-1.4 1.5 2.3-2.2 4.3 2.9-.1h4.4l-1.6-5.1zm-16.6-1.4-5 1.4-1.6 5.1H12l2.9.1-2.2-4.3 1.5-2.3zm7.8 2 .3-5.5 1.4-3.8h-7.4l1.4 3.8.3 5.5.1 1.8v4.2h3.6v-4.2l.3-1.8z" fill="#F6851B"/></svg>`,
   ),
@@ -191,7 +194,7 @@ export function WalletModal({ onClose }: { onClose: () => void }) {
     }
   }
   if (w.walletConnectEnabled) {
-    evmMerged.push({ id: "walletconnect", name: "WalletConnect", icon: "" });
+    evmMerged.push({ id: "walletconnect", name: "WalletConnect", icon: WALLET_ICONS.walletconnect });
   }
 
   // Merge detected Wallet Standard Solana wallets with standard Solana catalog.
@@ -210,7 +213,7 @@ export function WalletModal({ onClose }: { onClose: () => void }) {
   function handleEvmPick(item: (typeof evmMerged)[number]) {
     setError(null);
     if (item.id === "walletconnect") {
-      void run(item.id, () => w.connectEvm({ id: "walletconnect", name: "WalletConnect", icon: "" }));
+      void run(item.id, () => w.connectEvm({ id: "walletconnect", name: "WalletConnect", icon: WALLET_ICONS.walletconnect }));
       return;
     }
     const injected = item.detected ?? w.evmOptions[0];
@@ -222,6 +225,9 @@ export function WalletModal({ onClose }: { onClose: () => void }) {
     const link = item.deepLink ? item.deepLink(targetUrl) : targetUrl;
     setPromptWallet({ kind: "evm", name: item.name, icon: item.icon, deepLink: link });
     setManualAddr("");
+    if (typeof window !== "undefined" && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+      window.location.href = link;
+    }
   }
 
   function handleSolPick(item: (typeof solMerged)[number]) {
@@ -235,6 +241,9 @@ export function WalletModal({ onClose }: { onClose: () => void }) {
     const link = item.deepLink ? item.deepLink(targetUrl) : targetUrl;
     setPromptWallet({ kind: "sol", name: item.name, icon: item.icon, deepLink: link });
     setManualAddr("");
+    if (typeof window !== "undefined" && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+      window.location.href = link;
+    }
   }
 
   function submitManualAddress(e: React.FormEvent) {
@@ -321,9 +330,9 @@ export function WalletModal({ onClose }: { onClose: () => void }) {
                   evmMerged.map((o) => (
                     <Row
                       key={o.id}
-                      icon={o.id === "walletconnect" ? <span className="wicon wicon--wc">WC</span> : <WalletIcon src={o.icon} name={o.name} />}
+                      icon={<WalletIcon src={o.icon} name={o.name} />}
                       name={o.name}
-                      note={o.id === "walletconnect" ? "Scan with a mobile wallet" : o.detected ? "Detected" : "EVM wallet"}
+                      note={o.id === "walletconnect" ? "Scan or connect mobile wallet" : o.detected ? "Detected" : "Detected"}
                       action={busy === o.id ? "Waiting…" : "Connect"}
                       disabled={Boolean(busy)}
                       onClick={() => handleEvmPick(o)}
@@ -352,7 +361,7 @@ export function WalletModal({ onClose }: { onClose: () => void }) {
                       key={o.id}
                       icon={<WalletIcon src={o.icon} name={o.name} />}
                       name={o.name}
-                      note={o.detected ? "Detected" : "Solana wallet"}
+                      note="Detected"
                       action={busy === o.id ? "Waiting…" : "Connect"}
                       disabled={Boolean(busy)}
                       onClick={() => handleSolPick(o)}
