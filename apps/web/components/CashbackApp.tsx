@@ -1,11 +1,15 @@
 "use client";
 import { useEffect, useState } from "react";
+import { SAMPLE_SHIELDED_ZEC, useNetwork } from "./network";
+import { NetworkSwitch } from "./Shell";
 import { fmtUsd, useTokens } from "./useTokens";
 
 const isShielded = (a: string) => /^(u1[02-9ac-hj-np-z]{100,}|zs1[02-9ac-hj-np-z]{75})$/.test(a.trim());
 
 export function CashbackApp() {
   const { tokens, config } = useTokens();
+  const [net] = useNetwork();
+  const isTestnet = net === "testnet";
   const [addr, setAddr] = useState("");
   const [data, setData] = useState<{ pendingZat: string; paidZat: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -41,7 +45,24 @@ export function CashbackApp() {
     <main className="stage stage--split">
       <section className="widget" aria-label="Cashback">
         <header className="widget__head">
-          <h1>Cashback</h1>
+          <div className="widget__head-top">
+            <h1>Cashback</h1>
+            <div className="widget__head-actions">
+              {isTestnet && (
+                <button
+                  type="button"
+                  className="chip-btn chip-btn--sm"
+                  onClick={() => {
+                    setAddr(SAMPLE_SHIELDED_ZEC);
+                    void check(SAMPLE_SHIELDED_ZEC);
+                  }}
+                >
+                  Check test ZEC address
+                </button>
+              )}
+              <NetworkSwitch compact />
+            </div>
+          </div>
           <p>{rate}% of every swap comes back to you in shielded ZEC. Your shielded address is the only thing that tracks it.</p>
         </header>
         <form

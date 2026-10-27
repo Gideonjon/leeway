@@ -2,7 +2,10 @@ node_modules
 dist
 .next
 .env
+.env.*
+!.env.example
 *.log
+*.tsbuildinfo
 contracts/out
 contracts/cache
 contracts/broadcast

@@ -33,27 +33,69 @@ export function sortTokens(list: TokenOption[]) {
   });
 }
 
+// Instant seed tokens so the UI renders immediately without waiting for network round-trips.
+const SEED_TOKENS: TokenOption[] = [
+  { assetId: "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near", symbol: "USDC", blockchain: "base", decimals: 6, price: 1, contractAddress: "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913" },
+  { assetId: "nep141:sol.omft.near", symbol: "SOL", blockchain: "sol", decimals: 9, price: 185 },
+  { assetId: "nep141:zec.omft.near", symbol: "ZEC", blockchain: "zec", decimals: 8, price: 42.5 },
+  { assetId: "nep141:eth.omft.near", symbol: "ETH", blockchain: "eth", decimals: 18, price: 2650 },
+  { assetId: "nep141:base.omft.near", symbol: "ETH", blockchain: "base", decimals: 18, price: 2650 },
+  { assetId: "nep141:arb-0xaf88d065e77c8cc2239327c5edb3a432268e5831.omft.near", symbol: "USDC", blockchain: "arb", decimals: 6, price: 1, contractAddress: "0xaf88d065e77c8cc2239327c5edb3a432268e5831" },
+  { assetId: "nep141:eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near", symbol: "USDC", blockchain: "eth", decimals: 6, price: 1, contractAddress: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48" },
+  { assetId: "nep141:btc.omft.near", symbol: "BTC", blockchain: "btc", decimals: 8, price: 92000 },
+  { assetId: "nep141:wrap.near", symbol: "NEAR", blockchain: "near", decimals: 24, price: 4.8 },
+];
+
+const SEED_CONFIG: PublicConfig = {
+  appFeeBps: 40,
+  cashbackBps: 20,
+  ghostMaxUsd: 10000,
+  ghostMinDelayMin: 10,
+  ghostMaxDelayMin: 90,
+  ghostPurgeHours: 24,
+  dcaContract: "0x915F54a7774251CA430e68f9d5C220718be2cc09",
+};
+
 let cache: { tokens: TokenOption[]; config: PublicConfig } | null = null;
 let inflight: Promise<{ tokens: TokenOption[]; config: PublicConfig }> | null = null;
 
-function loadAll() {
+function readSessionCache(): { tokens: TokenOption[]; config: PublicConfig } | null {
+  if (cache) return cache;
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem("leeway.tokens.v1");
+    if (raw) {
+      cache = JSON.parse(raw);
+      return cache;
+    }
+  } catch {}
+  return null;
+}
+
+export function preloadTokens() {
   if (cache) return Promise.resolve(cache);
   inflight ??= Promise.all([fetch("/api/tokens").then((r) => r.json()), fetch("/api/config").then((r) => r.json())]).then(([t, c]) => {
     if (t.error) throw new Error(t.error);
     cache = { tokens: sortTokens(t), config: c };
+    try {
+      sessionStorage.setItem("leeway.tokens.v1", JSON.stringify(cache));
+    } catch {}
     return cache;
   });
   return inflight;
 }
 
 export function useTokens() {
-  const [state, setState] = useState<{ tokens: TokenOption[]; config: PublicConfig | null; error: string | null }>(() => ({
-    tokens: cache?.tokens ?? [],
-    config: cache?.config ?? null,
-    error: null,
-  }));
+  const [state, setState] = useState<{ tokens: TokenOption[]; config: PublicConfig | null; error: string | null }>(() => {
+    const warm = readSessionCache();
+    return {
+      tokens: warm?.tokens ?? SEED_TOKENS,
+      config: warm?.config ?? SEED_CONFIG,
+      error: null,
+    };
+  });
   useEffect(() => {
-    loadAll()
+    preloadTokens()
       .then((d) => setState({ tokens: d.tokens, config: d.config, error: null }))
       .catch((e: Error) => {
         inflight = null;

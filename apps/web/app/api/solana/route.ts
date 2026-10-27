@@ -2,8 +2,8 @@ import { fail, guard } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
 
-/** Read-only Solana RPC proxy for the two calls the browser needs to build a deposit. */
-const ALLOWED = new Set(["getLatestBlockhash", "getAccountInfo"]);
+/** Read-only Solana RPC proxy for the calls the browser needs to check balances and build a deposit. */
+const ALLOWED = new Set(["getLatestBlockhash", "getAccountInfo", "getBalance", "getTokenAccountsByOwner"]);
 
 export async function POST(req: Request) {
   const blocked = await guard(req, "solana", { perMin: 60 });

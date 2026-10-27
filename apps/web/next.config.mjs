@@ -6,8 +6,11 @@ import { fileURLToPath } from "node:url";
 // What the browser may talk to. Leeway's own API, plus WalletConnect when mobile EVM wallets are enabled.
 // Every other chain call goes through the user's own wallet extension (which is outside page CSP).
 const walletConnect = process.env.NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID
-  ? " https://*.walletconnect.org https://*.walletconnect.com wss://*.walletconnect.org wss://*.walletconnect.com https://api.web3modal.org"
+  ? " https://*.walletconnect.org https://*.walletconnect.com wss://*.walletconnect.org wss://*.walletconnect.com https://*.reown.com wss://*.reown.com https://api.web3modal.org"
   : "";
+
+const evmRpcs =
+  " https://ethereum-rpc.publicnode.com https://mainnet.base.org https://arb1.arbitrum.io https://mainnet.optimism.io https://polygon-rpc.com https://bsc-dataseed.bnbchain.org https://api.avax.network https://rpc.gnosischain.com https://rpc.berachain.com";
 
 const csp = [
   "default-src 'self'",
@@ -17,7 +20,7 @@ const csp = [
   // Wallet icons arrive as data: URIs from the extensions themselves.
   "img-src 'self' data: blob:",
   "font-src 'self'",
-  "connect-src 'self'" + walletConnect,
+  "connect-src 'self'" + walletConnect + evmRpcs,
   "frame-src" + (walletConnect ? " https://verify.walletconnect.org https://verify.walletconnect.com" : " 'none'"),
   "frame-ancestors 'none'",
   "base-uri 'self'",

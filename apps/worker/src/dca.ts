@@ -20,6 +20,7 @@ export async function tickDca(ctx: WorkerContext) {
   const wallet = createWalletClient({ chain: base, transport, account });
 
   for (const plan of await db.activeDcaPlans()) {
+    if (plan.planId < 0) continue;
     try {
       const onchain = await pub.readContract({
         address: cfg.dcaContract,

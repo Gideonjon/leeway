@@ -1,7 +1,7 @@
 // Local stand-ins for the 1Click API (port 4010) and a Zallet/zcashd JSON-RPC wallet (port 4020).
 // For end-to-end tests only. Control endpoints let a test script advance swap states and confirmations.
 import http from "node:http";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 
 const TOKENS = [
   { assetId: "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near", decimals: 6, blockchain: "base", symbol: "USDC", price: 1, contractAddress: "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913" },
@@ -34,7 +34,9 @@ const body = (req) => new Promise((r) => { let s = ""; req.on("data", (c) => (s 
 const send = (res, code, obj) => { res.writeHead(code, { "content-type": "application/json" }); res.end(JSON.stringify(obj)); };
 const hex = (n) => randomBytes(n).toString("hex");
 const B58 = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-const b58 = (bytes) => { let n = BigInt("0x" + Buffer.from(bytes).toString("hex")); let s = ""; while (n > 0n) { s = B58[Number(n % 58n)] + s; n /= 58n; } return s; };
+const b58 = (bytes) => { let n = BigInt("0x" + Buffer.from(bytes).toString("hex")); let s = ""; while (n > 0n) { s = B58[Number(n % 58n)] + s; n /= 58n; } for (const b of bytes) { if (b === 0) s = "1" + s; else break; } return s; };
+const sha256 = (b) => createHash("sha256").update(b).digest();
+const taddr = () => { const p = Buffer.concat([Buffer.from([0x1c, 0xb8]), randomBytes(20)]); return b58(Buffer.concat([p, sha256(sha256(p)).subarray(0, 4)])); };
 
 http.createServer(async (req, res) => {
   const url = new URL(req.url, "http://x");
@@ -96,7 +98,7 @@ http.createServer(async (req, res) => {
   const opid = () => { const o = `opid-${hex(6)}`; const txid = hex(32); wallet.txs.set(txid, 0); wallet.ops.set(o, txid); return [o, txid]; };
   switch (method) {
     case "z_getaddressforaccount": return ok({ address: params[1]?.[0] === "p2pkh" ? `u1t${hex(8)}` : `u1${"q".repeat(120)}` });
-    case "z_listunifiedreceivers": return ok({ p2pkh: `t1${hex(16)}` });
+    case "z_listunifiedreceivers": return ok({ p2pkh: taddr() });
     case "listunspent": {
       const bal = wallet.taddrBalances.get(params[2][0]) ?? 0n;
       return ok(bal > 0n ? [{ address: params[2][0], amount: zec(bal) }] : []);

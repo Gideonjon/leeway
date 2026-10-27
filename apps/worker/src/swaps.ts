@@ -5,6 +5,7 @@ import type { WorkerContext } from "./context.js";
 export async function tickSwaps(ctx: WorkerContext) {
   const open = await ctx.db.openSwaps(["swap", "dca", "ghost_leg1", "ghost_leg2"]);
   for (const s of open) {
+    if (s.depositAddress.startsWith("testnet_")) continue;
     try {
       const st = await ctx.oneclick.status(s.depositAddress, s.depositMemo ?? undefined);
       if (st.status !== s.status) {

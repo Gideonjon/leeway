@@ -1,7 +1,28 @@
-import { buildQuoteRequest, findToken, isShieldedZcashAddress, toBaseUnits, validateAddress } from "@leeway/core";
+import { buildQuoteRequest, findToken, isEvmChainCode, isShieldedZcashAddress, toBaseUnits, validateAddress } from "@leeway/core";
 import { errorMessage, fail, guard, json, screen, services, tokens } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
+
+const DRY_ADDRESSES: Record<string, string> = {
+  sol: "9xQeWvG816bUx9EPjHmaT23yvVM2ZWbrrpZb9PusVFin",
+  zec: "t1Hsc1LR8yKnbbe3twRp88p6vFfC5t7DLbs",
+  btc: "bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq",
+  ltc: "ltc1q6rz28mcfaxtmd6v789l9rrlrusdprr9pqcpvkl",
+  doge: "DH5yaieqoZN36fDVciNyRueRGvGLR3mr7L",
+  near: "leeway.near",
+  tron: "T9yD14Nj9j7xAB4dbGeiX9h8unkKHxuWwb",
+  xrp: "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh",
+  ton: "EQDtFpEwcFAEcRe5mLVh2N6C0x-_hJEM7W61_JLnSF74p4q2",
+  sui: "0x0000000000000000000000000000000000000000000000000000000000000002",
+  aptos: "0x1",
+  stellar: "GAAZI4TCR3TY5OJHCTJC2A4QSY6CJWJH5IAJTGKIN2ER7LBNVKOCCWN7",
+  cardano: "addr1qx2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgse35a3x",
+};
+
+function dryAddress(chain: string): string {
+  if (isEvmChainCode(chain)) return "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045";
+  return DRY_ADDRESSES[chain] ?? "leeway.near";
+}
 
 interface Body {
   originAsset: string;
@@ -32,7 +53,8 @@ export async function POST(req: Request) {
   const list = await tokens().catch(() => []);
   const origin = findToken(list, body.originAsset);
   if (!origin) return fail("Pick an asset to send.");
-  if (!findToken(list, body.destinationAsset)) return fail("Pick an asset to receive.");
+  const dest = findToken(list, body.destinationAsset);
+  if (!dest) return fail("Pick an asset to receive.");
 
   let amount: string;
   try {
@@ -67,8 +89,8 @@ export async function POST(req: Request) {
           destinationAsset: body.destinationAsset,
           amount,
           // 1Click needs syntactically valid addresses even for a dry run.
-          recipient: body.recipient?.trim() || "leeway.near",
-          refundTo: body.refundTo?.trim() || "leeway.near",
+          recipient: body.recipient?.trim() || dryAddress(dest.blockchain),
+          refundTo: body.refundTo?.trim() || dryAddress(origin.blockchain),
           dry,
         },
         { feeRecipient: cfg.feeRecipient, appFeeBps: cfg.appFeeBps, slippageBps: cfg.slippageBps },

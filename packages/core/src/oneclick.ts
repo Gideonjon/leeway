@@ -106,7 +106,10 @@ export class OneClickClient {
   private async request<T>(method: "GET" | "POST", path: string, body?: unknown, attempt = 0): Promise<T> {
     const headers: Record<string, string> = { accept: "application/json" };
     if (body !== undefined) headers["content-type"] = "application/json";
-    if (this.apiKey) headers["X-API-Key"] = this.apiKey;
+    if (this.apiKey) {
+      headers["X-API-Key"] = this.apiKey;
+      headers["Authorization"] = this.apiKey.startsWith("Bearer ") ? this.apiKey : `Bearer ${this.apiKey}`;
+    }
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 20_000);
     let res: Response;

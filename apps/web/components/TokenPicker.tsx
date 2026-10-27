@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { CHAIN_ORDER, chainName } from "@/lib/chains";
 import { ChainIcon, TokenIcon } from "./TokenIcon";
+import { fmtBalance, useBalances } from "./useBalances";
 import { fmtUsd, type TokenOption } from "./useTokens";
 
 export function TokenPicker(props: {
@@ -13,6 +14,7 @@ export function TokenPicker(props: {
 }) {
   const [q, setQ] = useState("");
   const [chain, setChain] = useState<string | "all">("all");
+  const { balanceOf } = useBalances(props.tokens);
   const input = useRef<HTMLInputElement>(null);
   const dialog = useRef<HTMLDivElement>(null);
 
@@ -36,13 +38,19 @@ export function TokenPicker(props: {
 
   const list = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    return props.tokens.filter(
+    const filtered = props.tokens.filter(
       (t) =>
         t.assetId !== props.exclude &&
         (chain === "all" || t.blockchain === chain) &&
         (!needle || t.symbol.toLowerCase().includes(needle) || chainName(t.blockchain).toLowerCase().includes(needle) || t.contractAddress?.toLowerCase() === needle),
     );
-  }, [props.tokens, props.exclude, chain, q]);
+    return filtered.sort((a, b) => {
+      const balA = balanceOf(a) * a.price;
+      const balB = balanceOf(b) * b.price;
+      if (balB !== balA) return balB - balA;
+      return 0;
+    });
+  }, [props.tokens, props.exclude, chain, q, balanceOf]);
 
   return (
     <div className="sheet-scrim" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
@@ -76,18 +84,24 @@ export function TokenPicker(props: {
             </label>
             {chain !== "all" && <div className="picker__context">{chainName(chain)}</div>}
             <ul className="token-list" role="listbox" aria-label="Tokens">
-              {list.slice(0, 200).map((t) => (
-                <li key={t.assetId}>
-                  <button role="option" aria-selected="false" className="token-row" onClick={() => props.onPick(t)}>
-                    <TokenIcon symbol={t.symbol} chain={t.blockchain} size={40} />
-                    <span className="token-row__name">
-                      <strong>{t.symbol}</strong>
-                      <span>{chainName(t.blockchain)}</span>
-                    </span>
-                    <span className="token-row__price">{fmtUsd(t.price)}</span>
-                  </button>
-                </li>
-              ))}
+              {list.slice(0, 200).map((t) => {
+                const bal = balanceOf(t);
+                return (
+                  <li key={t.assetId}>
+                    <button role="option" aria-selected="false" className="token-row" onClick={() => props.onPick(t)}>
+                      <TokenIcon symbol={t.symbol} chain={t.blockchain} size={40} />
+                      <span className="token-row__name">
+                        <strong>{t.symbol}</strong>
+                        <span>{chainName(t.blockchain)}</span>
+                      </span>
+                      <span className="token-row__bal">
+                        <strong>{fmtBalance(bal)}</strong>
+                        {bal > 0 && <span>{fmtUsd(bal * t.price)}</span>}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
               {list.length === 0 && <li className="token-list__empty">No match. Try the symbol, like USDC, or pick All chains.</li>}
             </ul>
           </div>

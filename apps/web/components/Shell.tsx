@@ -1,12 +1,14 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { shortAddr } from "@/lib/chains";
 import { ActivityDrawer } from "./ActivityDrawer";
 import { useActivity } from "./activity";
 import { Mark } from "./Logo";
+import { useNetwork } from "./network";
 import { ChainIcon } from "./TokenIcon";
+import { preloadTokens } from "./useTokens";
 import { useWallet, WalletProvider } from "./Wallet";
 import { WalletModal } from "./WalletModal";
 
@@ -79,14 +81,50 @@ function ConnectButton() {
   );
 }
 
+export function NetworkSwitch({ compact = false }: { compact?: boolean }) {
+  const [net, setNet] = useNetwork();
+  return (
+    <div className={`net-switch ${compact ? "net-switch--sm" : ""}`} role="group" aria-label="Network mode">
+      <button
+        type="button"
+        className={`net-switch__btn ${net === "mainnet" ? "is-active is-mainnet" : ""}`}
+        aria-pressed={net === "mainnet"}
+        onClick={() => setNet("mainnet")}
+      >
+        <span className="net-switch__dot net-switch__dot--main" />
+        Mainnet
+      </button>
+      <button
+        type="button"
+        className={`net-switch__btn ${net === "testnet" ? "is-active is-testnet" : ""}`}
+        aria-pressed={net === "testnet"}
+        onClick={() => setNet("testnet")}
+      >
+        <span className="net-switch__dot net-switch__dot--test" />
+        Testnet
+      </button>
+    </div>
+  );
+}
+
 function Header() {
   const path = usePathname();
+  const router = useRouter();
   const items = useActivity();
   const [drawer, setDrawer] = useState(false);
+  const [net, setNet] = useNetwork();
+
+  useEffect(() => {
+    void preloadTokens().catch(() => undefined);
+    for (const r of ["/", "/swap", "/dca", "/cashback", "/track", "/stats", "/privacy", "/terms"]) {
+      router.prefetch(r);
+    }
+  }, [router]);
+
   return (
     <>
       <header className="bar">
-        <Link href="/" className="bar__brand" aria-label="Leeway home">
+        <Link href="/" prefetch={true} className="bar__brand" aria-label="Leeway home">
           <Mark size={30} title="" />
           <span className="bar__word">
             lee<em>way</em>
@@ -94,12 +132,13 @@ function Header() {
         </Link>
         <nav className="seg" aria-label="Main">
           {NAV.map((n) => (
-            <Link key={n.href} href={n.href} className="seg__item" aria-current={path === n.href ? "page" : undefined}>
+            <Link key={n.href} href={n.href} prefetch={true} className="seg__item" aria-current={path === n.href ? "page" : undefined}>
               {n.label}
             </Link>
           ))}
         </nav>
         <div className="bar__end">
+          <NetworkSwitch />
           <button className="icon-btn icon-btn--count" onClick={() => setDrawer(true)} aria-label={`Activity, ${items.length} transfers`}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M3 12h4l3 7 4-14 3 7h4" />
@@ -110,6 +149,24 @@ function Header() {
           <ConnectButton />
         </div>
       </header>
+      {net === "testnet" && (
+        <div className="testnet-banner-wrap">
+          <div className="testnet-banner" role="status">
+            <div className="testnet-banner__body">
+              <span className="testnet-banner__badge">
+                <span className="testnet-banner__pulse" />
+                Testnet Sandbox
+              </span>
+              <span className="testnet-banner__text">
+                Test Ghost Send, Swap, Shielded DCA, and ZEC Cashback end-to-end with simulated deposits — no real funds used.
+              </span>
+            </div>
+            <button type="button" className="testnet-banner__btn" onClick={() => setNet("mainnet")}>
+              Switch to Mainnet
+            </button>
+          </div>
+        </div>
+      )}
       {drawer && <ActivityDrawer onClose={() => setDrawer(false)} />}
     </>
   );
@@ -137,10 +194,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
         {children}
         <footer className="foot">
           <nav aria-label="More">
-            <Link href="/track">Track a transfer</Link>
-            <Link href="/stats">Numbers</Link>
-            <Link href="/privacy">Who can see what</Link>
-            <Link href="/terms">Terms</Link>
+            <Link href="/track" prefetch={true}>Track a transfer</Link>
+            <Link href="/stats" prefetch={true}>Numbers</Link>
+            <Link href="/privacy" prefetch={true}>Who can see what</Link>
+            <Link href="/terms" prefetch={true}>Terms</Link>
           </nav>
           <span>Routed by NEAR Intents. Settled in shielded ZEC. Check every address before you send.</span>
         </footer>

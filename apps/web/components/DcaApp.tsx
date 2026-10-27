@@ -3,7 +3,10 @@ import { useCallback, useEffect, useState } from "react";
 import { createPublicClient, createWalletClient, custom, erc20Abi, keccak256, parseUnits, toBytes, type Address } from "viem";
 import { base } from "viem/chains";
 import { shortAddr } from "@/lib/chains";
+import { SAMPLE_SHIELDED_ZEC, useNetwork } from "./network";
+import { NetworkSwitch } from "./Shell";
 import { TokenIcon } from "./TokenIcon";
+import { fmtBalance, useBalances } from "./useBalances";
 import { fmtUsd, postJson, useTokens } from "./useTokens";
 import { useWallet } from "./Wallet";
 import { WalletModal } from "./WalletModal";
@@ -45,17 +48,24 @@ const isShielded = (a: string) => /^(u1[02-9ac-hj-np-z]{100,}|zs1[02-9ac-hj-np-z
 export function DcaApp() {
   const { tokens, config } = useTokens();
   const wallet = useWallet();
+  const { balanceOf, isChainConnected } = useBalances(tokens);
+  const [net] = useNetwork();
+  const isTestnet = net === "testnet";
   const [amount, setAmount] = useState("25");
   const [freq, setFreq] = useState<(typeof FREQS)[number]>(FREQS[0]);
   const [buys, setBuys] = useState("12");
   const [zec, setZec] = useState("");
   const [busy, setBusy] = useState<string | null>(null);
+  const [dcaStep, setDcaStep] = useState<number>(-1);
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState<string | null>(null);
   const [plans, setPlans] = useState<Plan[]>([]);
   const [walletOpen, setWalletOpen] = useState(false);
   const contract = config?.dcaContract as Address | null | undefined;
   const zecPrice = tokens.find((t) => t.assetId === "nep141:zec.omft.near")?.price ?? 0;
+  const baseUsdc = tokens.find((t) => t.symbol === "USDC" && t.blockchain === "base");
+  const usdcBal = balanceOf(baseUsdc);
+  const baseConnected = isChainConnected(baseUsdc);
 
   useEffect(() => {
     try {
@@ -67,9 +77,11 @@ export function DcaApp() {
     const r = await fetch(`/api/dca?owner=${owner}`);
     if (r.ok) setPlans(await r.json());
   }, []);
+  const activeOwner = wallet.address ?? (isTestnet ? "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045" : null);
+
   useEffect(() => {
-    if (wallet.address) void load(wallet.address);
-  }, [wallet.address, load]);
+    if (activeOwner) void load(activeOwner);
+  }, [activeOwner, load]);
 
   const per = Number(amount) || 0;
   const n = Number(buys) || 0;
@@ -80,9 +92,41 @@ export function DcaApp() {
   async function create() {
     setError(null);
     setDone(null);
-    if (!contract) return;
     if (!isShielded(zec)) return setError("Use a shielded Zcash address. It starts with u1 or zs1.");
     if (per < 5) return setError("The smallest buy is 5 USDC, so network fees don't eat it.");
+
+    if (isTestnet) {
+      const owner = activeOwner!;
+      setBusy("Step 1/3: Approving Testnet USDC allowance…");
+      setDcaStep(0);
+      try {
+        await new Promise((r) => setTimeout(r, 700));
+        setBusy("Step 2/3: Creating Shielded DCA plan on Base…");
+        setDcaStep(1);
+        const r = await postJson<{ planId: number }>("/api/testnet", {
+          action: "dca-create",
+          owner,
+          zecAddress: zec.trim(),
+          amount: per,
+          intervalSec: freq.sec,
+          periodsTotal: n,
+        });
+        await new Promise((r) => setTimeout(r, 700));
+        setDcaStep(2);
+        try {
+          localStorage.setItem("leeway.cashback", zec.trim());
+        } catch {}
+        setDone(`Testnet Plan #${Math.abs(r.planId)} is live. Click "Simulate Buy" on the right to test a period run.`);
+        await load(owner);
+      } catch (e) {
+        setError((e as Error).message);
+      } finally {
+        setBusy(null);
+      }
+      return;
+    }
+
+    if (!contract) return;
     if (!wallet.evm) {
       setWalletOpen(true);
       return;
@@ -92,19 +136,22 @@ export function DcaApp() {
     const w = createWalletClient({ chain: base, transport: custom(provider), account });
     const pub = createPublicClient({ chain: base, transport: custom(provider) });
     try {
+      setDcaStep(0);
       await w.switchChain({ id: base.id }).catch(() => w.addChain({ chain: base }));
       const perUnits = parseUnits(amount, 6);
       const budget = perUnits * BigInt(n > 0 ? n : freq.perYear);
       const allowance = await pub.readContract({ address: USDC, abi: erc20Abi, functionName: "allowance", args: [account, contract] });
       if (allowance < budget) {
-        setBusy("Approve USDC in your wallet…");
+        setBusy("Step 1/3: Approve USDC in your wallet…");
         const h = await w.writeContract({ address: USDC, abi: erc20Abi, functionName: "approve", args: [contract, budget] });
         await pub.waitForTransactionReceipt({ hash: h });
       }
-      setBusy("Confirm the plan in your wallet…");
+      setDcaStep(1);
+      setBusy("Step 2/3: Confirm the DCA plan in your wallet…");
       const hash = await w.writeContract({ address: contract, abi: dcaAbi, functionName: "createPlan", args: [USDC, perUnits, freq.sec, n, keccak256(toBytes(zec.trim()))] });
-      setBusy("Waiting for Base…");
+      setBusy("Step 3/3: Waiting for Base confirmation…");
       await pub.waitForTransactionReceipt({ hash });
+      setDcaStep(2);
       const r = await postJson<{ planId: number }>("/api/dca", { txHash: hash, zecAddress: zec.trim() });
       try {
         localStorage.setItem("leeway.cashback", zec.trim());
@@ -119,6 +166,19 @@ export function DcaApp() {
   }
 
   async function stop(id: number) {
+    if (id < 0) {
+      setError(null);
+      setBusy(`Stopping Testnet plan #${Math.abs(id)}…`);
+      try {
+        await postJson("/api/testnet", { action: "dca-stop", planId: id });
+        setPlans((p) => p.map((x) => (x.planId === id ? { ...x, active: false } : x)));
+      } catch (e) {
+        setError((e as Error).message);
+      } finally {
+        setBusy(null);
+      }
+      return;
+    }
     const provider = wallet.evm?.provider;
     if (!provider || !wallet.address || !contract) return;
     setError(null);
@@ -136,11 +196,36 @@ export function DcaApp() {
     }
   }
 
+  async function simulateBuy(id: number) {
+    if (!activeOwner) return;
+    setError(null);
+    setDone(null);
+    setBusy(`Simulating buy for plan #${Math.abs(id)}…`);
+    try {
+      await postJson("/api/testnet", { action: "dca-run", planId: id, owner: activeOwner });
+      setDone(`Simulated 1 DCA buy for Plan #${Math.abs(id)} — ZEC cashback accrued (check the Cashback tab).`);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  }
+
   return (
     <main className="stage stage--split">
       <section className="widget" aria-label="Shielded DCA">
         <header className="widget__head">
-          <h1>Shielded DCA</h1>
+          <div className="widget__head-top">
+            <h1>Shielded DCA</h1>
+            <div className="widget__head-actions">
+              {isTestnet && (
+                <button type="button" className="chip-btn chip-btn--sm" onClick={() => setZec(SAMPLE_SHIELDED_ZEC)}>
+                  Fill test ZEC address
+                </button>
+              )}
+              <NetworkSwitch compact />
+            </div>
+          </div>
           <p>Buy ZEC on a schedule. Your USDC stays in your wallet until the day it&apos;s spent.</p>
         </header>
         <form
@@ -153,7 +238,12 @@ export function DcaApp() {
           <div className="tcard">
             <div className="tcard__row">
               <span className="tcard__label">Each buy</span>
-              <span className="tcard__meta">from your wallet on Base</span>
+              <span className="tcard__meta tcard__meta--bal">
+                <span>
+                  Balance: <strong>{fmtBalance(usdcBal)}</strong> USDC
+                </span>
+                {!baseConnected && <span className="bal-tag">Wallet not connected</span>}
+              </span>
             </div>
             <div className="tcard__main">
               <span className="tok-btn tok-btn--static">
@@ -215,11 +305,11 @@ export function DcaApp() {
             </p>
           )}
 
-          {!contract ? (
+          {!contract && !isTestnet ? (
             <p className="note">Shielded DCA switches on once the Leeway contract is live on Base. Ghost Send and Swap work now.</p>
           ) : (
             <button className="cta" type="submit" disabled={Boolean(busy)}>
-              {busy ?? (wallet.address ? "Start DCA" : "Connect wallet to start")}
+              {busy ?? (isTestnet ? "Start Testnet DCA" : wallet.address ? "Start DCA" : "Connect wallet to start")}
             </button>
           )}
         </form>
@@ -244,9 +334,16 @@ export function DcaApp() {
                   </span>
                 </div>
                 {p.active ? (
-                  <button className="chip-btn" onClick={() => void stop(p.planId)} disabled={Boolean(busy)}>
-                    Stop
-                  </button>
+                  <div style={{ display: "flex", gap: "6px" }}>
+                    {p.planId < 0 && (
+                      <button className="chip-btn" onClick={() => void simulateBuy(p.planId)} disabled={Boolean(busy)}>
+                        Simulate Buy
+                      </button>
+                    )}
+                    <button className="chip-btn" onClick={() => void stop(p.planId)} disabled={Boolean(busy)}>
+                      Stop
+                    </button>
+                  </div>
                 ) : (
                   <span className="pill">Stopped</span>
                 )}
@@ -255,25 +352,25 @@ export function DcaApp() {
           </ul>
         ) : (
           <ol className="psteps">
-            <li className="pstep pstep--todo">
+            <li className={`pstep pstep--${dcaStep < 0 ? "todo" : dcaStep === 0 ? "now" : "done"}`}>
               <span className="pstep__icon">
                 <TokenIcon symbol="USDC" chain="base" size={34} />
               </span>
               <div className="pstep__body">
-                <div className="pstep__title">One period leaves your wallet</div>
+                <div className="pstep__title">1. Approve & schedule USDC on Base</div>
                 <div className="pstep__detail">The contract can only take {per ? fmtUsd(per) : "your amount"} once per period. Nothing else.</div>
               </div>
             </li>
-            <li className="pstep pstep--todo">
+            <li className={`pstep pstep--${dcaStep < 1 ? "todo" : dcaStep === 1 ? "now" : "done"}`}>
               <span className="pstep__icon">
                 <TokenIcon symbol="ZEC" chain="zec" size={34} />
               </span>
               <div className="pstep__body">
-                <div className="pstep__title">NEAR Intents buys ZEC</div>
+                <div className="pstep__title">2. NEAR Intents buys ZEC</div>
                 <div className="pstep__detail">Solvers compete for the best price on each buy.</div>
               </div>
             </li>
-            <li className="pstep pstep--todo pstep--shielded">
+            <li className={`pstep pstep--${dcaStep < 2 ? "todo" : "done"} pstep--shielded`}>
               <span className="pstep__icon">
                 <svg width="22" height="22" viewBox="0 0 64 64" aria-hidden="true">
                   <path d="M14 54 A40 40 0 0 1 54 14" fill="none" stroke="var(--lee)" strokeWidth="11" strokeLinecap="round" />
@@ -281,7 +378,7 @@ export function DcaApp() {
                 </svg>
               </span>
               <div className="pstep__body">
-                <div className="pstep__title">Lands shielded</div>
+                <div className="pstep__title">3. Lands shielded in your wallet</div>
                 <div className="pstep__detail">Only a hash of your Zcash address goes on Base. Stop any time, or revoke the allowance.</div>
               </div>
             </li>

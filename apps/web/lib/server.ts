@@ -10,6 +10,7 @@ import {
   ZcashRpcWallet,
   type LeewayConfig,
   type Screener,
+  type Stats,
   type Token,
 } from "@leeway/core";
 
@@ -21,11 +22,18 @@ interface Services {
   screener: Screener;
 }
 
-const g = globalThis as unknown as { __leeway?: Services; __leewayTokens?: { at: number; tokens: Token[] } };
+const g = globalThis as unknown as {
+  __leeway?: Services;
+  __leewayTokens?: { at: number; tokens: Token[]; inflight?: Promise<Token[]> };
+  __leewayStats?: { at: number; stats: Stats; inflight?: Promise<Stats> };
+  __leewayMemRate?: Map<string, { window: number; count: number }>;
+};
 
 /** Process-wide singletons (survive Next dev hot reloads). */
 export function services(): Services {
-  if (!g.__leeway) {
+  const currentDca = process.env.LEEWAY_DCA_CONTRACT ?? "";
+  const currentFee = process.env.LEEWAY_FEE_RECIPIENT ?? "";
+  if (!g.__leeway || g.__leeway.cfg.dcaContract !== currentDca || g.__leeway.cfg.feeRecipient !== currentFee) {
     const cfg = loadConfig();
     if (cfg.production) {
       const problems = productionProblems(cfg, "web");
@@ -42,13 +50,44 @@ export function services(): Services {
   return g.__leeway;
 }
 
-/** The 1Click token list, cached for a minute. */
+/** The 1Click token list, cached for 5 minutes with stale-while-revalidate. */
 export async function tokens(): Promise<Token[]> {
   const c = g.__leewayTokens;
-  if (c && Date.now() - c.at < 60_000) return c.tokens;
+  const now = Date.now();
+  if (c && now - c.at < 300_000) return c.tokens;
+  if (c) {
+    c.inflight ??= services()
+      .oneclick.tokens()
+      .then((list) => {
+        g.__leewayTokens = { at: Date.now(), tokens: list };
+        return list;
+      })
+      .catch(() => c.tokens);
+    return c.tokens;
+  }
   const list = await services().oneclick.tokens();
   g.__leewayTokens = { at: Date.now(), tokens: list };
   return list;
+}
+
+/** Aggregate protocol stats, cached for 30s with stale-while-revalidate. */
+export async function cachedStats(): Promise<Stats> {
+  const c = g.__leewayStats;
+  const now = Date.now();
+  if (c && now - c.at < 30_000) return c.stats;
+  if (c) {
+    c.inflight ??= services()
+      .db.stats()
+      .then((s) => {
+        g.__leewayStats = { at: Date.now(), stats: s };
+        return s;
+      })
+      .catch(() => c.stats);
+    return c.stats;
+  }
+  const s = await services().db.stats();
+  g.__leewayStats = { at: Date.now(), stats: s };
+  return s;
 }
 
 export function json(data: unknown, status = 200) {
@@ -94,12 +133,22 @@ export async function guard(req: Request, route: string, opts: { perMin?: number
   const { cfg, db } = services();
   const len = Number(req.headers.get("content-length") ?? 0);
   if (len > (opts.maxBytes ?? 8_192)) return fail("Request too large.", 413);
-  try {
-    const ok = await db.rateLimit(`${route}:${clientKey(req)}`, opts.perMin ?? cfg.rateLimitPerMin);
-    if (!ok) return new Response(JSON.stringify({ error: "Too many requests. Wait a minute and try again." }), { status: 429, headers: { "content-type": "application/json", "retry-after": "60" } });
-  } catch (e) {
-    console.error("[leeway] rate limiter unavailable", e);
-    return fail("Leeway is busy. Try again in a moment.", 503);
+  const key = `${route}:${clientKey(req)}`;
+  const limit = opts.perMin ?? cfg.rateLimitPerMin;
+  const win = Math.floor(Date.now() / 60_000);
+  const map = (g.__leewayMemRate ??= new Map());
+  const cur = map.get(key);
+  const count = cur && cur.window === win ? cur.count + 1 : 1;
+  map.set(key, { window: win, count });
+  if (map.size > 5_000) {
+    for (const [k, v] of map.entries()) if (v.window < win) map.delete(k);
+  }
+  void db.rateLimit(key, limit).catch(() => undefined);
+  if (count > limit) {
+    return new Response(JSON.stringify({ error: "Too many requests. Wait a minute and try again." }), {
+      status: 429,
+      headers: { "content-type": "application/json", "retry-after": "60" },
+    });
   }
   return null;
 }

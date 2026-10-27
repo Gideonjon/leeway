@@ -1,4 +1,4 @@
-import { services } from "@/lib/server";
+import { cachedStats } from "@/lib/server";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Numbers — Leeway" };
@@ -6,9 +6,7 @@ export const metadata = { title: "Numbers — Leeway" };
 const zec = (zat: bigint) => (Number(zat) / 1e8).toLocaleString(undefined, { maximumFractionDigits: 4 });
 
 export default async function StatsPage() {
-  const stats = await services()
-    .db.stats()
-    .catch(() => null);
+  const stats = await cachedStats().catch(() => null);
   return (
     <main className="stage stage--wide">
       <section className="widget widget--wide">

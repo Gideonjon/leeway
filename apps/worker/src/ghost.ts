@@ -15,6 +15,7 @@ import type { WorkerContext } from "./context.js";
 export async function tickGhosts(ctx: WorkerContext) {
   const ghosts = await ctx.db.workableGhosts();
   for (const g of ghosts) {
+    if (g.leg1DepositAddress?.startsWith("testnet_")) continue;
     try {
       await step(ctx, g);
     } catch (e) {

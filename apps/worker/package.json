@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "tsx src/index.ts",
-    "once": "tsx src/index.ts --once",
+    "start": "tsx --env-file-if-exists=../../.env src/index.ts",
+    "once": "tsx --env-file-if-exists=../../.env src/index.ts --once",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "build": "tsc -p tsconfig.build.json",
     "start:prod": "node dist/index.js"
