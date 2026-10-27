@@ -334,7 +334,7 @@ export function DcaApp() {
                   </span>
                 </div>
                 {p.active ? (
-                  <div style={{ display: "flex", gap: "6px" }}>
+                  <div className="plan__actions">
                     {p.planId < 0 && (
                       <button className="chip-btn" onClick={() => void simulateBuy(p.planId)} disabled={Boolean(busy)}>
                         Simulate Buy

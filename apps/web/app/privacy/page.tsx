@@ -16,25 +16,29 @@ export default function PrivacyPage() {
           <p>Privacy is only useful if you know where it stops.</p>
         </header>
         <div className="widget__body prose">
-          <table className="matrix">
-            <caption className="sr-only">What each party can see during a Ghost Send</caption>
-            <thead>
-              <tr>
-                <th scope="col">During a Ghost Send</th>
-                <th scope="col">Sees your wallet send</th>
-                <th scope="col">Sees who received it</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ROWS.map(([who, a, b]) => (
-                <tr key={who}>
-                  <th scope="row">{who}</th>
-                  <td className={a ? "yes" : "no"}>{a ? "Yes" : "No"}</td>
-                  <td className={b ? "yes" : "no"}>{b ? "Yes" : "No"}</td>
+          <div tabIndex={0} role="region" aria-labelledby="privacy-table-caption" className="table-wrapper">
+            <table className="matrix">
+              <caption className="sr-only" id="privacy-table-caption">
+                What each party can see during a Ghost Send
+              </caption>
+              <thead>
+                <tr>
+                  <th scope="col">During a Ghost Send</th>
+                  <th scope="col">Sees your wallet send</th>
+                  <th scope="col">Sees who received it</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {ROWS.map(([who, a, b]) => (
+                  <tr key={who}>
+                    <th scope="row">{who}</th>
+                    <td className={a ? "yes" : "no"}>{a ? "Yes" : "No"}</td>
+                    <td className={b ? "yes" : "no"}>{b ? "Yes" : "No"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           <p>
             Ghost Send hides the link from the public chain. Leeway runs the wallet in the middle, so for a while we can see both sides. We keep only what we
             need to finish the send, and erase it 24 hours after delivery.
