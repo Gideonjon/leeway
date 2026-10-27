@@ -35,6 +35,7 @@ export async function POST(req: Request) {
   try {
     const pub = createPublicClient({ chain: base, transport: http(cfg.baseRpcUrl) });
     const receipt = await pub.waitForTransactionReceipt({ hash: body.txHash, timeout: 60_000 });
+    if (receipt.status !== "success") return fail("That transaction reverted on-chain.");
     let planId: bigint | null = null;
     for (const log of receipt.logs) {
       if (log.address.toLowerCase() !== cfg.dcaContract.toLowerCase()) continue;

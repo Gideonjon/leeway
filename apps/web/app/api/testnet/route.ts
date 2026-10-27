@@ -172,7 +172,7 @@ export async function POST(req: Request) {
 
       if (kind === "swap") {
         const s = await db.swapByDeposit(id);
-        if (!s) return fail("Testnet swap not found.", 404);
+        if (!s || !s.depositAddress.startsWith("testnet_")) return fail("Testnet swap not found.", 404);
         if (step === "processing") {
           await db.updateSwapStatus(s.id, "PROCESSING", s.amountOut, s.amountInUsd);
           return json({ ok: true, status: "PROCESSING" });
@@ -181,14 +181,14 @@ export async function POST(req: Request) {
         if (s.cashbackAddress && s.amountInUsd && !s.cashbackAccrued) {
           const usdMicros = cashbackUsdMicros(usdToMicros(s.amountInUsd), cfg.cashbackBps);
           const zat = usdMicrosToZat(usdMicros, zecUsd);
-          await db.insertCashback({ source: "swap", sourceId: s.id, address: s.cashbackAddress, usdMicros, zat, eligibleAt: new Date() });
+          await db.insertCashback({ source: "swap", sourceId: `testnet:${s.id}`, address: s.cashbackAddress, usdMicros, zat, eligibleAt: new Date() });
           await db.markCashbackAccrued(s.id);
         }
         return json({ ok: true, status: "SUCCESS" });
       }
 
       const g = await db.ghostByCode(id);
-      if (!g) return fail("Testnet Ghost Send not found.", 404);
+      if (!g || !g.leg1DepositAddress?.startsWith("testnet_")) return fail("Testnet Ghost Send not found.", 404);
 
       if (step === "shielding") {
         await db.updateGhost(g.id, {
@@ -234,7 +234,7 @@ export async function POST(req: Request) {
           if (leg1.cashbackAddress && leg1.amountInUsd && !leg1.cashbackAccrued) {
             const usdMicros = cashbackUsdMicros(usdToMicros(leg1.amountInUsd), cfg.cashbackBps);
             const zat = usdMicrosToZat(usdMicros, zecUsd);
-            await db.insertCashback({ source: "ghost", sourceId: leg1.id, address: leg1.cashbackAddress, usdMicros, zat, eligibleAt: new Date() });
+            await db.insertCashback({ source: "ghost", sourceId: `testnet:${leg1.id}`, address: leg1.cashbackAddress, usdMicros, zat, eligibleAt: new Date() });
             await db.markCashbackAccrued(leg1.id);
           }
         }
@@ -269,6 +269,7 @@ export async function POST(req: Request) {
 
     if (action === "dca-run") {
       const planId = Number(body.planId);
+      if (!Number.isInteger(planId) || planId >= 0) return fail("Only Testnet DCA plans can be simulated.", 403);
       const owner = String(body.owner ?? "").trim();
       const plans = await db.dcaPlansByOwner(owner);
       const plan = plans.find((p) => p.planId === planId);
@@ -280,7 +281,7 @@ export async function POST(req: Request) {
       await db.updateDcaRun(runId, { txHash: `0xtestnet${hex(28)}`, status: "sent" });
       await db.insertCashback({
         source: "dca",
-        sourceId: runId,
+        sourceId: `testnet:${runId}`,
         address: plan.zecAddress,
         usdMicros,
         zat,
@@ -291,6 +292,7 @@ export async function POST(req: Request) {
 
     if (action === "dca-stop") {
       const planId = Number(body.planId);
+      if (!Number.isInteger(planId) || planId >= 0) return fail("Only Testnet DCA plans can be stopped via Testnet API.", 403);
       await db.setDcaPlanActive(planId, false);
       return json({ ok: true });
     }

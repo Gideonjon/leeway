@@ -136,12 +136,12 @@ create table if not exists rate_limits (
 create index if not exists swaps_parent_idx on swaps (parent_id);
 create index if not exists ghost_created_idx on ghost_transfers (created_at);
 
--- Stats count only payouts that actually went out.
+-- Stats count only mainnet payouts and swaps that actually went out.
 create or replace view leeway_stats as
 select
-  (select coalesce(sum(nullif(amount_in_usd, '')::numeric), 0) from swaps where status = 'SUCCESS' and kind <> 'ghost_leg2') as volume_usd,
-  (select count(*) from swaps where status = 'SUCCESS' and kind in ('swap', 'ghost_leg1', 'dca')) as completed_swaps,
-  (select count(*) from ghost_transfers where state = 'completed') as ghost_sends,
-  (select count(*) from dca_plans where active) as active_dca_plans,
+  (select coalesce(sum(nullif(amount_in_usd, '')::numeric), 0) from swaps where status = 'SUCCESS' and kind <> 'ghost_leg2' and deposit_address not like 'testnet_%') as volume_usd,
+  (select count(*) from swaps where status = 'SUCCESS' and kind in ('swap', 'ghost_leg1', 'dca') and deposit_address not like 'testnet_%') as completed_swaps,
+  (select count(*) from ghost_transfers where state = 'completed' and coalesce(leg1_deposit_address, '') not like 'testnet_%') as ghost_sends,
+  (select count(*) from dca_plans where active and plan_id > 0) as active_dca_plans,
   (select coalesce(sum(total_zat), 0) from cashback_payouts where status = 'sent') as cashback_paid_zat,
-  (select coalesce(sum(zat), 0) from cashback_entries where status in ('pending', 'reserved')) as cashback_pending_zat;
+  (select coalesce(sum(zat), 0) from cashback_entries where status in ('pending', 'reserved') and source_id not like 'testnet:%') as cashback_pending_zat;

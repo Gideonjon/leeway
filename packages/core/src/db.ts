@@ -179,6 +179,7 @@ export class LeewayDb {
       `select s.* from swaps s
        left join ghost_transfers g on g.id = s.parent_id
        where s.status = 'SUCCESS' and not s.cashback_accrued and s.cashback_address is not null
+         and s.deposit_address not like 'testnet_%'
          and (s.kind <> 'ghost_leg1' or g.state = 'completed')
        limit 200`,
     );
@@ -298,7 +299,7 @@ export class LeewayDb {
 
   async pendingCashback(now: Date): Promise<CashbackEntry[]> {
     const { rows } = await this.pool.query(
-      `select * from cashback_entries where status = 'pending' and eligible_at <= $1 order by created_at limit 2000`,
+      `select * from cashback_entries where status = 'pending' and eligible_at <= $1 and source_id not like 'testnet:%' order by created_at limit 2000`,
       [now],
     );
     return rows.map((r) => ({

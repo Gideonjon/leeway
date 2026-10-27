@@ -168,6 +168,7 @@ async function step(ctx: WorkerContext, g: GhostTransfer) {
 export async function tickGhostLeg2(ctx: WorkerContext) {
   const ghosts = await ctx.db.workableGhosts();
   for (const g of ghosts) {
+    if (g.leg1DepositAddress?.startsWith("testnet_")) continue;
     if (g.state !== "leg2_pending") continue;
     const status = await legStatus(ctx, g.leg2DepositAddress);
     if (status === "SUCCESS") {
