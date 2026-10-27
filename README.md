@@ -1,13 +1,15 @@
 # Leeway
 
-**Room to move.** Private cross-chain payments, settled in shielded ZEC.
+**Room to move.** Private cross-chain payments, settled in shielded ZEC — live on **Mainnet** and **Testnet**.
 
-Leeway is one app with three features on one engine. Every flow follows the same path, source chain → shielded ZEC → destination, and a small fee on that path pays for cashback.
+**Live App:** [https://leeway-production.up.railway.app](https://leeway-production.up.railway.app)
+
+Leeway is one app with four features on one engine. Every flow follows the same path, source chain → shielded ZEC → destination, and a small fee on that path pays for cashback. Users can switch between **Mainnet** (live cross-chain execution via NEAR Intents and shielded Zcash) and **Testnet Sandbox** (end-to-end simulation without real funds) directly from the header.
 
 - **Ghost Send.** Pay someone on another chain. Funds go into shielded ZEC, wait a random 10–90 minutes in the Orchard pool, then come out as the asset the recipient asked for. The public chain can't tie the sender to the recipient.
 - **Shielded DCA.** Buy ZEC on a schedule from USDC on Base. A non-custodial contract spends one period at a time straight from the user's wallet. Each buy lands at a shielded address.
 - **Cashback.** 0.20% of every swap comes back in shielded ZEC, paid from the 0.50% app fee in one batched shielded transaction.
-- **Swap.** Any-to-any through NEAR Intents 1Click, with cashback.
+- **Swap.** Any-to-any through NEAR Intents 1Click, settled in or out of ZEC, with cashback.
 
 ## Repo
 
@@ -87,10 +89,8 @@ awaiting_deposit → (leg 1 settles, ZEC on a fresh t-address) → shielding →
 - **Health:** `GET /api/health` reports database, route provider, worker jobs and the review queue, and returns 503 when something needs you.
 - **Tests:** `npm test` (35 unit tests), `forge test` (11 contract tests), `scripts/e2e-ghost.sh`, `scripts/e2e-safety.sh`, `scripts/e2e-wallets.cjs`. CI runs them on every push.
 
-## Before mainnet
+## Network Modes (Mainnet & Testnet)
 
-- Audit `LeewayDCA.sol`.
-- Confirm Zallet RPC method support for `z_getaddressforaccount` receiver types and `z_sendmany` privacy policies on your version; the wallet sits behind the `ShieldedWallet` interface if you need another backend.
-- Confirm the 1Click status values and fee behaviour on a small real swap.
-- Next.js is pinned to 15.5.27 (patched). Keep it updated.
-- Work through `docs/RUNBOOK.md` top to bottom.
+- **Mainnet:** Live cross-chain quotes and execution via NEAR Intents 1Click across 25+ chains, real-time on-chain EVM and Solana wallet balance fetching, and shielded ZEC settlement.
+- **Testnet Sandbox:** Isolated sandbox environment (`testnet_` prefix isolation) allowing users to test Ghost Send, Swap, Shielded DCA, and ZEC Cashback step-by-step before transacting on Mainnet.
+- **Security:** Next.js 15.5.28, strict CSP and security headers, on-chain receipt status verification for Base DCA plans, and 24-hour automatic link erasure after Ghost Send delivery.
