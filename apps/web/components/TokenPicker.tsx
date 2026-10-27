@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { CHAIN_ORDER, chainName } from "@/lib/chains";
 import { ChainIcon, TokenIcon } from "./TokenIcon";
 import { fmtBalance, useBalances } from "./useBalances";
@@ -52,12 +53,14 @@ export function TokenPicker(props: {
     });
   }, [props.tokens, props.exclude, chain, q, balanceOf]);
 
-  return (
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
     <div className="sheet-scrim" onMouseDown={(e) => e.target === e.currentTarget && props.onClose()}>
       <div className="sheet" role="dialog" aria-modal="true" aria-label={props.title} ref={dialog}>
         <div className="sheet__head">
           <h2>{props.title}</h2>
-          <button className="icon-btn" onClick={props.onClose} aria-label="Close">
+          <button type="button" className="icon-btn" onClick={props.onClose} aria-label="Close">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M6 6l12 12M18 6L6 18" />
             </svg>
@@ -65,11 +68,11 @@ export function TokenPicker(props: {
         </div>
         <div className="picker">
           <nav className="picker__chains" aria-label="Filter by chain">
-            <button className={`chain-chip ${chain === "all" ? "is-on" : ""}`} onClick={() => setChain("all")} title="All chains">
+            <button type="button" className={`chain-chip ${chain === "all" ? "is-on" : ""}`} onClick={() => setChain("all")} title="All chains">
               <span className="chain-chip__all">All</span>
             </button>
             {chains.map((c) => (
-              <button key={c} className={`chain-chip ${chain === c ? "is-on" : ""}`} onClick={() => setChain(c)} title={chainName(c)} aria-label={chainName(c)}>
+              <button type="button" key={c} className={`chain-chip ${chain === c ? "is-on" : ""}`} onClick={() => setChain(c)} title={chainName(c)} aria-label={chainName(c)}>
                 <ChainIcon chain={c} size={28} />
               </button>
             ))}
@@ -88,7 +91,7 @@ export function TokenPicker(props: {
                 const bal = balanceOf(t);
                 return (
                   <li key={t.assetId}>
-                    <button role="option" aria-selected="false" className="token-row" onClick={() => props.onPick(t)}>
+                    <button type="button" role="option" aria-selected="false" className="token-row" onClick={() => props.onPick(t)}>
                       <TokenIcon symbol={t.symbol} chain={t.blockchain} size={40} />
                       <span className="token-row__name">
                         <strong>{t.symbol}</strong>
@@ -107,6 +110,7 @@ export function TokenPicker(props: {
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }

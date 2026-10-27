@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { chainName } from "@/lib/chains";
 import { clearActivity, useActivity, type ActivityItem } from "./activity";
 import { TokenIcon } from "./TokenIcon";
@@ -86,14 +87,20 @@ export function ActivityDrawer({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", k);
-    return () => window.removeEventListener("keydown", k);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", k);
+      document.body.style.overflow = prev;
+    };
   }, [onClose]);
-  return (
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <div className="sheet-scrim sheet-scrim--side" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <aside className="drawer" role="dialog" aria-modal="true" aria-label="Activity">
         <div className="sheet__head">
           <h2>Activity</h2>
-          <button className="icon-btn" onClick={onClose} aria-label="Close">
+          <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M6 6l12 12M18 6L6 18" />
             </svg>
@@ -108,12 +115,13 @@ export function ActivityDrawer({ onClose }: { onClose: () => void }) {
                 <Row key={i.id} item={i} />
               ))}
             </ul>
-            <button className="text-btn" onClick={clearActivity}>
+            <button type="button" className="text-btn" onClick={clearActivity}>
               Clear this list
             </button>
           </>
         )}
       </aside>
-    </div>
+    </div>,
+    document.body,
   );
 }

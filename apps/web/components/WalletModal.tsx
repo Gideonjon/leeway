@@ -1,18 +1,66 @@
 "use client";
 import QRCode from "qrcode";
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { shortAddr } from "@/lib/chains";
 import { ZCASH_WALLETS } from "@/lib/payuri";
 import { ChainIcon } from "./TokenIcon";
 import { useWallet, type EvmOption, type SolOption } from "./Wallet";
 
-function WalletIcon({ src, name }: { src: string; name: string }) {
-  if (!src) return <span className="wicon wicon--mono">{name.slice(0, 2)}</span>;
+const EVM_FALLBACK_WALLETS = [
+  {
+    id: "metamask-link",
+    name: "MetaMask",
+    badge: "MM",
+    color: "#E2761B",
+    href: (url: string) => `https://metamask.app.link/dapp/${url.replace(/^https?:\/\//, "")}`,
+  },
+  {
+    id: "coinbase-link",
+    name: "Coinbase Wallet",
+    badge: "CB",
+    color: "#0052FF",
+    href: (url: string) => `https://go.cb-w.com/dapp?cb_url=${encodeURIComponent(url)}`,
+  },
+  {
+    id: "trust-link",
+    name: "Trust Wallet",
+    badge: "TW",
+    color: "#0500FF",
+    href: (url: string) => `https://link.trustwallet.com/open_url?coin_id=60&url=${encodeURIComponent(url)}`,
+  },
+];
+
+const SOL_FALLBACK_WALLETS = [
+  {
+    id: "phantom-link",
+    name: "Phantom",
+    badge: "PH",
+    color: "#AB9FF2",
+    href: (url: string) => `https://phantom.app/ul/browse/${encodeURIComponent(url)}?ref=${encodeURIComponent(url)}`,
+  },
+  {
+    id: "solflare-link",
+    name: "Solflare",
+    badge: "SF",
+    color: "#FC7227",
+    href: (url: string) => `https://solflare.com/ul/v1/browse/${encodeURIComponent(url)}?ref=${encodeURIComponent(url)}`,
+  },
+];
+
+function WalletIcon({ src, name, color }: { src: string; name: string; color?: string }) {
+  if (!src) {
+    return (
+      <span className="wicon wicon--mono" style={color ? { background: color, color: "#fff" } : undefined}>
+        {name.slice(0, 2)}
+      </span>
+    );
+  }
   // eslint-disable-next-line @next/next/no-img-element
   return <img className="wicon" src={src} alt="" width={36} height={36} />;
 }
 
-function Row(props: { icon: React.ReactNode; name: string; note?: string; addr?: boolean; action: React.ReactNode; onClick?: () => void; disabled?: boolean }) {
+function Row(props: { icon: React.ReactNode; name: string; note?: string; addr?: boolean; action: React.ReactNode; onClick?: () => void; href?: string; disabled?: boolean }) {
   const body = (
     <>
       {props.icon}
@@ -23,8 +71,15 @@ function Row(props: { icon: React.ReactNode; name: string; note?: string; addr?:
       <span className="wrow__action">{props.action}</span>
     </>
   );
+  if (props.href) {
+    return (
+      <a className="wrow wrow--link" href={props.href} target="_blank" rel="noopener noreferrer">
+        {body}
+      </a>
+    );
+  }
   return props.onClick ? (
-    <button className="wrow" onClick={props.onClick} disabled={props.disabled}>
+    <button type="button" className="wrow" onClick={props.onClick} disabled={props.disabled}>
       {body}
     </button>
   ) : (
@@ -41,7 +96,7 @@ function WcQr({ uri }: { uri: string }) {
     <div className="wc">
       <div className="qr qr--lg" role="img" aria-label="WalletConnect QR code" dangerouslySetInnerHTML={{ __html: svg }} />
       <p className="hint">Scan with any WalletConnect wallet: Rainbow, Trust, MetaMask Mobile, Uniswap Wallet and more.</p>
-      <button className="copy-btn" onClick={() => void navigator.clipboard?.writeText(uri)}>
+      <button type="button" className="copy-btn" onClick={() => void navigator.clipboard?.writeText(uri)}>
         Copy link
       </button>
     </div>
@@ -52,11 +107,20 @@ export function WalletModal({ onClose }: { onClose: () => void }) {
   const w = useWallet();
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [mounted, setMounted] = useState(false);
+  const [pageUrl, setPageUrl] = useState("https://leeway-production.up.railway.app");
 
   useEffect(() => {
+    setMounted(true);
+    if (typeof window !== "undefined") setPageUrl(window.location.href);
     const k = (e: KeyboardEvent) => e.key === "Escape" && onClose();
     window.addEventListener("keydown", k);
-    return () => window.removeEventListener("keydown", k);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", k);
+      document.body.style.overflow = prev;
+    };
   }, [onClose]);
 
   async function run(id: string, fn: () => Promise<unknown>) {
@@ -74,12 +138,14 @@ export function WalletModal({ onClose }: { onClose: () => void }) {
 
   const evmList: EvmOption[] = [...w.evmOptions, ...(w.walletConnectEnabled ? [{ id: "walletconnect", name: "WalletConnect", icon: "" }] : [])];
 
-  return (
-    <div className="sheet-scrim" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+  if (!mounted) return null;
+
+  return createPortal(
+    <div className="sheet-scrim sheet-scrim--wallets" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <div className="sheet sheet--wallets" role="dialog" aria-modal="true" aria-label="Connect wallets">
         <div className="sheet__head">
           <h2>Connect wallets</h2>
-          <button className="icon-btn" onClick={onClose} aria-label="Close">
+          <button type="button" className="icon-btn" onClick={onClose} aria-label="Close">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M6 6l12 12M18 6L6 18" />
             </svg>
@@ -125,7 +191,18 @@ export function WalletModal({ onClose }: { onClose: () => void }) {
                     />
                   ))
                 ) : (
-                  <p className="wempty">No EVM wallet found in this browser. Install MetaMask, Rabby or Coinbase Wallet, or open Leeway in your wallet&apos;s browser.</p>
+                  <>
+                    {EVM_FALLBACK_WALLETS.map((fw) => (
+                      <Row
+                        key={fw.id}
+                        icon={<WalletIcon src="" name={fw.badge} color={fw.color} />}
+                        name={fw.name}
+                        note="Open in wallet app"
+                        action="Open"
+                        href={fw.href(pageUrl)}
+                      />
+                    ))}
+                  </>
                 )}
               </section>
 
@@ -156,7 +233,18 @@ export function WalletModal({ onClose }: { onClose: () => void }) {
                     />
                   ))
                 ) : (
-                  <p className="wempty">No Solana wallet found in this browser. Install Phantom, Solflare or Backpack. On mobile, scan the deposit QR with your wallet: it&apos;s a Solana Pay request.</p>
+                  <>
+                    {SOL_FALLBACK_WALLETS.map((fw) => (
+                      <Row
+                        key={fw.id}
+                        icon={<WalletIcon src="" name={fw.badge} color={fw.color} />}
+                        name={fw.name}
+                        note="Open in wallet app"
+                        action="Open"
+                        href={fw.href(pageUrl)}
+                      />
+                    ))}
+                  </>
                 )}
               </section>
 
@@ -182,6 +270,7 @@ export function WalletModal({ onClose }: { onClose: () => void }) {
           )}
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
